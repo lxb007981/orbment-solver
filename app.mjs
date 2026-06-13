@@ -6,9 +6,9 @@ const elementColors = {
   水: "#1976a8",
   风: "#23875d",
   火: "#b83b30",
-  时: "#59616f",
-  空: "#ba8a17",
-  幻: "#7b5bbd",
+  时: "#64547d",
+  空: "#b5a972",
+  幻: "#b1aabc",
 };
 
 const STORAGE_KEY = "orbment-solver-inputs";
@@ -18,6 +18,7 @@ const slotGrid = savedInputState?.slotGrid ?? createDefaultSlotGrid();
 const savedRequirements = savedInputState?.requirements ?? createDefaultRequirements();
 let quartzList = [];
 const requiredQuartzIds = new Set(savedInputState?.requiredQuartzIds ?? []);
+const excludedQuartzIds = new Set(savedInputState?.excludedQuartzIds ?? []);
 let activeWorker = null;
 let activeJobId = 0;
 let computeStartedAt = 0;
@@ -90,6 +91,7 @@ function loadInputState() {
       slotGrid: normalizeStoredSlotGrid(state.slotGrid),
       requirements: normalizeStoredRequirements(state.requirements),
       requiredQuartzIds: normalizeStoredRequiredQuartzIds(state.requiredQuartzIds),
+      excludedQuartzIds: normalizeStoredRequiredQuartzIds(state.excludedQuartzIds),
     };
   } catch {
     return null;
@@ -105,6 +107,7 @@ function saveInputState() {
         slotGrid: slotGrid.map((line) => [...line]),
         requirements: readRequirements(),
         requiredQuartzIds: [...requiredQuartzIds],
+        excludedQuartzIds: [...excludedQuartzIds],
       }),
     );
   } catch {
@@ -200,21 +203,49 @@ function readRequirements() {
   });
 }
 
-function renderRequiredQuartzPicker() {
-  const container = document.querySelector("#required-quartz");
+function findQuartzById(quartzId) {
+  return quartzList.find((item) => item.id === quartzId);
+}
+
+function conflictingQuartz() {
+  for (const quartzId of requiredQuartzIds) {
+    if (excludedQuartzIds.has(quartzId)) {
+      return findQuartzById(quartzId) ?? { name: `#${quartzId}` };
+    }
+  }
+  return null;
+}
+
+function alertInvalidQuartzConflict(quartz) {
+  window.alert(`${quartz.name} cannot be in both Required Quartz and Excluded Quartz.`);
+}
+
+function validateQuartzSelections() {
+  const conflict = conflictingQuartz();
+  if (!conflict) {
+    return true;
+  }
+
+  alertInvalidQuartzConflict(conflict);
+  renderStatus("Quartz selection is invalid.", "error");
+  return false;
+}
+
+function renderQuartzPicker({ containerId, titleText, selectId, selectedIds, conflictIds, emptyText }) {
+  const container = document.querySelector(containerId);
   if (!container) {
     return;
   }
 
   container.replaceChildren();
 
-  const title = createElement("h2", { text: "Required Quartz" });
+  const title = createElement("h2", { text: titleText });
   const controls = createElement("div", { className: "required-controls" });
 
   const elementLabel = createElement("label", { className: "select-field" });
   elementLabel.append(createElement("span", { text: "Element" }));
   const elementSelect = document.createElement("select");
-  elementSelect.id = "required-element";
+  elementSelect.id = `${selectId}-element`;
   elementSelect.append(new Option("全部", "all"));
   for (const element of ELEMENTS) {
     elementSelect.append(new Option(element, element));
@@ -224,13 +255,13 @@ function renderRequiredQuartzPicker() {
   const quartzLabel = createElement("label", { className: "select-field" });
   quartzLabel.append(createElement("span", { text: "Quartz" }));
   const quartzSelect = document.createElement("select");
-  quartzSelect.id = "required-quartz-select";
+  quartzSelect.id = `${selectId}-quartz`;
   quartzLabel.append(quartzSelect);
 
   function updateQuartzOptions() {
     const selectedElement = elementSelect.value;
     const options = quartzList.filter(
-      (quartz) => !requiredQuartzIds.has(quartz.id) && (selectedElement === "all" || quartz.element === selectedElement),
+      (quartz) => !selectedIds.has(quartz.id) && (selectedElement === "all" || quartz.element === selectedElement),
     );
 
     quartzSelect.replaceChildren();
@@ -250,9 +281,17 @@ function renderRequiredQuartzPicker() {
       return;
     }
 
-    requiredQuartzIds.add(Number(quartzSelect.value));
+    const quartzId = Number(quartzSelect.value);
+    const quartz = findQuartzById(quartzId);
+    if (conflictIds.has(quartzId)) {
+      alertInvalidQuartzConflict(quartz ?? { name: `#${quartzId}` });
+      quartzSelect.value = "";
+      return;
+    }
+
+    selectedIds.add(quartzId);
     saveInputState();
-    renderRequiredQuartzPicker();
+    renderQuartzPickers();
   });
   updateQuartzOptions();
 
@@ -260,11 +299,11 @@ function renderRequiredQuartzPicker() {
   container.append(title, controls);
 
   const selectedList = createElement("div", { className: "required-list" });
-  if (requiredQuartzIds.size === 0) {
-    selectedList.append(createElement("p", { className: "empty-required", text: "No required quartz selected." }));
+  if (selectedIds.size === 0) {
+    selectedList.append(createElement("p", { className: "empty-required", text: emptyText }));
   } else {
-    for (const quartzId of requiredQuartzIds) {
-      const quartz = quartzList.find((item) => item.id === quartzId);
+    for (const quartzId of selectedIds) {
+      const quartz = findQuartzById(quartzId);
       if (!quartz) {
         continue;
       }
@@ -273,14 +312,33 @@ function renderRequiredQuartzPicker() {
       chip.type = "button";
       chip.title = `Remove ${quartz.name}`;
       chip.addEventListener("click", () => {
-        requiredQuartzIds.delete(quartz.id);
+        selectedIds.delete(quartz.id);
         saveInputState();
-        renderRequiredQuartzPicker();
+        renderQuartzPickers();
       });
       selectedList.append(chip);
     }
   }
   container.append(selectedList);
+}
+
+function renderQuartzPickers() {
+  renderQuartzPicker({
+    containerId: "#required-quartz",
+    titleText: "Required Quartz",
+    selectId: "required",
+    selectedIds: requiredQuartzIds,
+    conflictIds: excludedQuartzIds,
+    emptyText: "No required quartz selected.",
+  });
+  renderQuartzPicker({
+    containerId: "#excluded-quartz",
+    titleText: "Excluded Quartz",
+    selectId: "excluded",
+    selectedIds: excludedQuartzIds,
+    conflictIds: requiredQuartzIds,
+    emptyText: "No excluded quartz selected.",
+  });
 }
 
 function renderSlots(lineIndex, container) {
@@ -533,6 +591,10 @@ function handleCompute() {
     return;
   }
 
+  if (!validateQuartzSelections()) {
+    return;
+  }
+
   saveInputState();
   let worker;
   try {
@@ -550,6 +612,7 @@ function handleCompute() {
     options: {
       limit: 20,
       requiredQuartzIds: [...requiredQuartzIds],
+      excludedQuartzIds: [...excludedQuartzIds],
     },
   };
 
@@ -607,7 +670,8 @@ function handleReset() {
     input.value = "";
   });
   requiredQuartzIds.clear();
-  renderRequiredQuartzPicker();
+  excludedQuartzIds.clear();
+  renderQuartzPickers();
   document.querySelector("#results").replaceChildren(
     createElement("p", { className: "empty-state", text: "Enter requirements or select required quartz to search." }),
   );
@@ -651,6 +715,10 @@ function renderApp() {
   requiredQuartz.id = "required-quartz";
   shell.append(requiredQuartz);
 
+  const excludedQuartz = createElement("section", { className: "required-panel" });
+  excludedQuartz.id = "excluded-quartz";
+  shell.append(excludedQuartz);
+
   const grid = createElement("div", { className: "line-grid" });
   for (let lineIndex = 0; lineIndex < 4; lineIndex += 1) {
     grid.append(renderLine(lineIndex));
@@ -675,15 +743,21 @@ async function loadQuartz() {
     quartzList = parseQuartzCsv(await response.text());
     const knownQuartzIds = new Set(quartzList.map((quartz) => quartz.id));
     const previousRequiredCount = requiredQuartzIds.size;
+    const previousExcludedCount = excludedQuartzIds.size;
     for (const quartzId of requiredQuartzIds) {
       if (!knownQuartzIds.has(quartzId)) {
         requiredQuartzIds.delete(quartzId);
       }
     }
-    if (requiredQuartzIds.size !== previousRequiredCount) {
+    for (const quartzId of excludedQuartzIds) {
+      if (!knownQuartzIds.has(quartzId)) {
+        excludedQuartzIds.delete(quartzId);
+      }
+    }
+    if (requiredQuartzIds.size !== previousRequiredCount || excludedQuartzIds.size !== previousExcludedCount) {
       saveInputState();
     }
-    renderRequiredQuartzPicker();
+    renderQuartzPickers();
     renderStatus(`${quartzList.length} quartz loaded.`, "ok");
   } catch (error) {
     renderStatus(`Failed to load quartz.csv: ${error.message}`, "error");

@@ -360,6 +360,19 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
       .map((id) => Number(id))
       .filter((id) => knownQuartzIds.has(id)),
   );
+  const excludedQuartzIds = new Set(
+    (options.excludedQuartzIds ?? [])
+      .map((id) => Number(id))
+      .filter((id) => knownQuartzIds.has(id)),
+  );
+  for (const quartzId of requiredQuartzIds) {
+    if (excludedQuartzIds.has(quartzId)) {
+      const quartz = quartzList.find((item) => item.id === quartzId);
+      throw new Error(`${quartz?.name ?? `Quartz #${quartzId}`} cannot be both required and excluded`);
+    }
+  }
+
+  const availableQuartzList = quartzList.filter((quartz) => !excludedQuartzIds.has(quartz.id));
   const normalizedRequirements = requirements.map(normalizeRequirement);
   const activeLines = normalizedRequirements
     .map((requirement, lineIndex) => ({ lineIndex, requirement }))
@@ -369,8 +382,8 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
       ? slotGrid
           .map((_, lineIndex) => ({ lineIndex, requirement: normalizedRequirements[lineIndex] }))
           .sort((first, second) => {
-            const firstScore = lineConstraintScore(first.lineIndex, slotGrid[first.lineIndex], first.requirement, quartzList);
-            const secondScore = lineConstraintScore(second.lineIndex, slotGrid[second.lineIndex], second.requirement, quartzList);
+            const firstScore = lineConstraintScore(first.lineIndex, slotGrid[first.lineIndex], first.requirement, availableQuartzList);
+            const secondScore = lineConstraintScore(second.lineIndex, slotGrid[second.lineIndex], second.requirement, availableQuartzList);
             return (
               firstScore.hasRequirement - secondScore.hasRequirement ||
               firstScore.activeRequirementCount - secondScore.activeRequirementCount ||
@@ -419,7 +432,7 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
       lineIndex,
       slotGrid[lineIndex],
       requirement,
-      quartzList,
+      availableQuartzList,
       usedQuartzIds,
       remainingRequiredQuartzIds,
       limit + 1,

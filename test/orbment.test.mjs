@@ -156,6 +156,48 @@ test("suppresses exact duplicate quartz variants with the lower CSV id as canoni
   assert.deepEqual(equippedNames(result.solutions[0]), ["魔防3"]);
 });
 
+test("excludes selected quartz by name instead of elemental values", () => {
+  const quartz = parseQuartzCsv("魔防3\t水\t水×6\r\nHP3\t水\t水×6\r\n");
+  const result = searchSolutions(quartz, grid([SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED]), [req({ 水: 6 }), req(), req(), req()], {
+    excludedQuartzIds: quartzIdsByName(quartz, ["HP3"]),
+  });
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["魔防3"]);
+});
+
+test("does not use excluded quartz", () => {
+  const quartz = parseQuartzCsv("HP3\t水\t水×6\r\n");
+  const result = searchSolutions(quartz, grid([SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED]), [req({ 水: 6 }), req(), req(), req()], {
+    excludedQuartzIds: quartzIdsByName(quartz, ["HP3"]),
+  });
+
+  assert.equal(result.solutions.length, 0);
+});
+
+test("allows an exact duplicate quartz when the canonical duplicate is excluded", () => {
+  const quartz = parseQuartzCsv("魔防3\t水\t水×6\r\nHP3\t水\t水×6\r\n");
+  const result = searchSolutions(quartz, grid([SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED]), [req({ 水: 6 }), req(), req(), req()], {
+    excludedQuartzIds: quartzIdsByName(quartz, ["魔防3"]),
+  });
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["HP3"]);
+});
+
+test("rejects quartz selected as both required and excluded", () => {
+  const quartz = parseQuartzCsv("HP3\t水\t水×6\r\n");
+
+  assert.throws(
+    () =>
+      searchSolutions(quartz, grid([SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED]), [req(), req(), req(), req()], {
+        requiredQuartzIds: quartzIdsByName(quartz, ["HP3"]),
+        excludedQuartzIds: quartzIdsByName(quartz, ["HP3"]),
+      }),
+    /cannot be both required and excluded/,
+  );
+});
+
 test("allows exact duplicate quartz to satisfy separate lines when both copies are needed", () => {
   const quartz = parseQuartzCsv("魔防2\t水\t水×4\r\nHP2\t水\t水×4\r\n");
   const result = searchSolutions(

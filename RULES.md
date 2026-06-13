@@ -57,10 +57,17 @@ Some quartz are restricted by name:
   - global quartz non-reuse
 - If a mandatory quartz cannot be legally placed, the search reports not found.
 
+## Excluded Quartz
+
+- The user can select a list of quartz that must not appear in the final result.
+- Excluded quartz are selected by quartz name, not by elemental values.
+  - Example: excluding `HP3	水	水×6` does not exclude `魔防3	水	水×6`.
+- A quartz cannot be both mandatory and excluded. If that happens, the input is invalid.
+
 ## Search Results
 
 - The solver brute-forces valid combinations.
-- If no combination satisfies the requirements and mandatory quartz list, it reports not found.
+- If no combination satisfies the requirements, mandatory quartz list, and excluded quartz list, it reports not found.
 - If more than 20 possible combinations are found, the solver stops and alerts the user.
 - Results avoid irrelevant extra quartz:
   - If a non-mandatory equipped quartz can be removed while still satisfying all requirements, that assignment is filtered out.
