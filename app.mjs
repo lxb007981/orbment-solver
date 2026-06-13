@@ -11,11 +11,110 @@ const elementColors = {
   幻: "#7b5bbd",
 };
 
-const slotGrid = Array.from({ length: 4 }, () => Array(4).fill(SLOT_NORMAL));
+const STORAGE_KEY = "orbment-solver-inputs";
+const STORAGE_VERSION = 1;
+const savedInputState = loadInputState();
+const slotGrid = savedInputState?.slotGrid ?? createDefaultSlotGrid();
+const savedRequirements = savedInputState?.requirements ?? createDefaultRequirements();
 let quartzList = [];
-const requiredQuartzIds = new Set();
+const requiredQuartzIds = new Set(savedInputState?.requiredQuartzIds ?? []);
 
 const app = document.querySelector("#app");
+
+function createDefaultSlotGrid() {
+  return Array.from({ length: 4 }, () => Array(4).fill(SLOT_NORMAL));
+}
+
+function createDefaultRequirements() {
+  return Array.from({ length: 4 }, () => Object.fromEntries(ELEMENTS.map((element) => [element, 0])));
+}
+
+function isValidSlotType(type) {
+  return type === SLOT_NORMAL || type === SLOT_DISABLED || ELEMENTS.includes(type);
+}
+
+function normalizeStoredSlotGrid(value) {
+  if (!Array.isArray(value)) {
+    return createDefaultSlotGrid();
+  }
+
+  return Array.from({ length: 4 }, (_, lineIndex) => {
+    const line = Array.isArray(value[lineIndex]) ? value[lineIndex] : [];
+    return Array.from({ length: 4 }, (_, slotIndex) => {
+      const type = line[slotIndex];
+      return isValidSlotType(type) ? type : SLOT_NORMAL;
+    });
+  });
+}
+
+function normalizeStoredRequirements(value) {
+  if (!Array.isArray(value)) {
+    return createDefaultRequirements();
+  }
+
+  return Array.from({ length: 4 }, (_, lineIndex) => {
+    const requirement = value[lineIndex] ?? {};
+    return Object.fromEntries(
+      ELEMENTS.map((element) => [element, Math.max(0, Number(requirement[element] ?? 0) || 0)]),
+    );
+  });
+}
+
+function normalizeStoredRequiredQuartzIds(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id >= 0);
+}
+
+function loadInputState() {
+  try {
+    const rawState = globalThis.localStorage?.getItem(STORAGE_KEY);
+    if (!rawState) {
+      return null;
+    }
+
+    const state = JSON.parse(rawState);
+    if (state?.version !== STORAGE_VERSION) {
+      return null;
+    }
+
+    return {
+      slotGrid: normalizeStoredSlotGrid(state.slotGrid),
+      requirements: normalizeStoredRequirements(state.requirements),
+      requiredQuartzIds: normalizeStoredRequiredQuartzIds(state.requiredQuartzIds),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveInputState() {
+  try {
+    globalThis.localStorage?.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: STORAGE_VERSION,
+        slotGrid: slotGrid.map((line) => [...line]),
+        requirements: readRequirements(),
+        requiredQuartzIds: [...requiredQuartzIds],
+      }),
+    );
+  } catch {
+    // Ignore storage errors so private browsing or full storage does not break solving.
+  }
+}
+
+function clearInputState() {
+  try {
+    globalThis.localStorage?.removeItem(STORAGE_KEY);
+  } catch {
+    // Ignore storage errors so reset remains usable.
+  }
+}
 
 function createElement(tag, options = {}) {
   const element = document.createElement(tag);
@@ -116,6 +215,7 @@ function renderRequiredQuartzPicker() {
     }
 
     requiredQuartzIds.add(Number(quartzSelect.value));
+    saveInputState();
     renderRequiredQuartzPicker();
   });
   updateQuartzOptions();
@@ -138,6 +238,7 @@ function renderRequiredQuartzPicker() {
       chip.title = `Remove ${quartz.name}`;
       chip.addEventListener("click", () => {
         requiredQuartzIds.delete(quartz.id);
+        saveInputState();
         renderRequiredQuartzPicker();
       });
       selectedList.append(chip);
@@ -160,6 +261,7 @@ function renderSlots(lineIndex, container) {
     button.addEventListener("click", () => {
       slotGrid[lineIndex][slotIndex] = nextSlotType(slotGrid[lineIndex][slotIndex]);
       renderSlots(lineIndex, container);
+      saveInputState();
     });
     container.append(button);
   });
@@ -191,6 +293,11 @@ function renderLine(lineIndex) {
     input.inputMode = "numeric";
     input.dataset.requirement = element;
     input.placeholder = "0";
+    const savedValue = savedRequirements[lineIndex]?.[element] ?? 0;
+    if (savedValue > 0) {
+      input.value = String(savedValue);
+    }
+    input.addEventListener("input", saveInputState);
     label.append(input);
     requirements.append(label);
   }
@@ -272,6 +379,7 @@ function handleCompute() {
     return;
   }
 
+  saveInputState();
   const result = searchSolutions(quartzList, slotGrid, readRequirements(), {
     limit: 20,
     requiredQuartzIds: [...requiredQuartzIds],
@@ -293,6 +401,7 @@ function handleReset() {
   document.querySelector("#results").replaceChildren(
     createElement("p", { className: "empty-state", text: "Enter requirements or select required quartz to search." }),
   );
+  clearInputState();
 }
 
 function renderApp() {
@@ -344,6 +453,16 @@ async function loadQuartz() {
     }
 
     quartzList = parseQuartzCsv(await response.text());
+    const knownQuartzIds = new Set(quartzList.map((quartz) => quartz.id));
+    const previousRequiredCount = requiredQuartzIds.size;
+    for (const quartzId of requiredQuartzIds) {
+      if (!knownQuartzIds.has(quartzId)) {
+        requiredQuartzIds.delete(quartzId);
+      }
+    }
+    if (requiredQuartzIds.size !== previousRequiredCount) {
+      saveInputState();
+    }
     renderRequiredQuartzPicker();
     renderStatus(`${quartzList.length} quartz loaded.`, "ok");
   } catch (error) {
