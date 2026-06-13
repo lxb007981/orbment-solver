@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseQuartzCsv } from "../src/quartz.mjs";
 import {
@@ -35,6 +36,14 @@ function equippedNames(solution) {
     .filter(Boolean)
     .map((entry) => entry.quartz.name)
     .sort();
+}
+
+function quartzIdsByName(quartz, names) {
+  return names.map((name) => {
+    const item = quartz.find((quartzItem) => quartzItem.name === name);
+    assert.ok(item, `missing quartz fixture: ${name}`);
+    return item.id;
+  });
 }
 
 test("parses tab-delimited quartz CSV rows", () => {
@@ -99,7 +108,8 @@ test("skips lines without requirements", () => {
 });
 
 test("stops after more than the requested solution limit", () => {
-  const rows = Array.from({ length: 6 }, (_, index) => `水${index + 1}\t水\t水×1`).join("\r\n");
+  const extraElements = ["地", "风", "火", "时", "空", "幻"];
+  const rows = extraElements.map((element, index) => `水${index + 1}\t水\t水×1，${element}×1`).join("\r\n");
   const quartz = parseQuartzCsv(`${rows}\r\n`);
   const result = searchSolutions(quartz, grid([SLOT_NORMAL, SLOT_NORMAL, SLOT_NORMAL, SLOT_NORMAL]), [req({ 水: 1 }), req(), req(), req()], {
     limit: 3,
@@ -120,6 +130,95 @@ test("filters line assignments with irrelevant extra quartz", () => {
     equipped.map((entry) => entry.quartz.name).sort(),
     ["水1", "水2", "水3"],
   );
+});
+
+test("prefers weaker quartz when it still satisfies requirements", () => {
+  const quartz = parseQuartzCsv("HP3\t水\t水×6\r\nHP2\t水\t水×4\r\n");
+  const result = searchSolutions(quartz, grid([SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED]), [req({ 水: 4 }), req(), req(), req()]);
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["HP2"]);
+});
+
+test("keeps stronger quartz when weaker quartz cannot satisfy requirements", () => {
+  const quartz = parseQuartzCsv("HP2\t水\t水×4\r\nHP3\t水\t水×6\r\n");
+  const result = searchSolutions(quartz, grid([SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED]), [req({ 水: 5 }), req(), req(), req()]);
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["HP3"]);
+});
+
+test("suppresses exact duplicate quartz variants with the lower CSV id as canonical", () => {
+  const quartz = parseQuartzCsv("魔防3\t水\t水×6\r\nHP3\t水\t水×6\r\n");
+  const result = searchSolutions(quartz, grid([SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED]), [req({ 水: 6 }), req(), req(), req()]);
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["魔防3"]);
+});
+
+test("allows exact duplicate quartz to satisfy separate lines when both copies are needed", () => {
+  const quartz = parseQuartzCsv("魔防2\t水\t水×4\r\nHP2\t水\t水×4\r\n");
+  const result = searchSolutions(
+    quartz,
+    grid([SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED], [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED]),
+    [req({ 水: 4 }), req({ 水: 4 }), req(), req()],
+  );
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["HP2", "魔防2"]);
+});
+
+test("keeps required quartz even when a weaker quartz satisfies requirements", () => {
+  const quartz = parseQuartzCsv("HP3\t水\t水×6\r\nHP2\t水\t水×4\r\n");
+  const result = searchSolutions(
+    quartz,
+    grid(
+      [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    ),
+    [req({ 水: 4 }), req(), req(), req()],
+    {
+      requiredQuartzIds: [quartz[0].id],
+    },
+  );
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["HP3"]);
+});
+
+test("does not collapse same-value quartz with different line eligibility", () => {
+  const quartz = parseQuartzCsv("冻结之刃\t水\t水×3\r\n水3\t水\t水×3\r\n");
+  const result = searchSolutions(
+    quartz,
+    grid([SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED], [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED]),
+    [req({ 水: 3 }), req({ 水: 3 }), req(), req()],
+  );
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["冻结之刃", "水3"]);
+});
+
+test("finds mandatory quartz distributions beyond early line candidate buckets", () => {
+  const quartz = parseQuartzCsv(readFileSync(new URL("../quartz.csv", import.meta.url), "utf8"));
+  const requiredNames = ["苍冰之诗", "水灵之诗", "胧月之诗", "月灵之诗"];
+  const result = searchSolutions(
+    quartz,
+    grid(
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_NORMAL, SLOT_NORMAL, "风", SLOT_NORMAL],
+      [SLOT_NORMAL, "水", SLOT_NORMAL, SLOT_NORMAL],
+    ),
+    [req(), req(), req({ 风: 6, 幻: 12 }), req({ 水: 3, 幻: 6 })],
+    {
+      requiredQuartzIds: quartzIdsByName(quartz, requiredNames),
+    },
+  );
+
+  assert.ok(result.solutions.length > 0);
+  assert.ok(requiredNames.every((name) => equippedNames(result.solutions[0]).includes(name)));
 });
 
 test("derives allowed line indices from restricted quartz names", () => {

@@ -64,4 +64,6 @@ Some quartz are restricted by name:
 - If more than 20 possible combinations are found, the solver stops and alerts the user.
 - Results avoid irrelevant extra quartz:
   - If a non-mandatory equipped quartz can be removed while still satisfying all requirements, that assignment is filtered out.
+  - If a non-mandatory equipped quartz can be replaced by an unused, legal weaker quartz and still satisfy all requirements, that assignment is filtered out.
+  - Exact same-value quartz with the same elemental type and line eligibility are treated as duplicate result variants; the earlier row in `quartz.csv` is shown as the canonical choice.
   - Mandatory quartz are kept even when they are not needed for elemental totals.
