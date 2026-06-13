@@ -99,6 +99,10 @@ function renderRequiredQuartzPicker() {
     );
 
     quartzSelect.replaceChildren();
+    const placeholder = new Option(options.length === 0 ? "No quartz available" : "Select quartz...", "");
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    quartzSelect.append(placeholder);
     for (const quartz of options) {
       quartzSelect.append(new Option(quartz.name, String(quartz.id)));
     }
@@ -106,20 +110,17 @@ function renderRequiredQuartzPicker() {
   }
 
   elementSelect.addEventListener("change", updateQuartzOptions);
-  updateQuartzOptions();
-
-  const addButton = createElement("button", { className: "secondary-button", text: "Add" });
-  addButton.type = "button";
-  addButton.addEventListener("click", () => {
-    if (!quartzSelect.value) {
+  quartzSelect.addEventListener("change", () => {
+    if (quartzSelect.value === "") {
       return;
     }
 
     requiredQuartzIds.add(Number(quartzSelect.value));
     renderRequiredQuartzPicker();
   });
+  updateQuartzOptions();
 
-  controls.append(elementLabel, quartzLabel, addButton);
+  controls.append(elementLabel, quartzLabel);
   container.append(title, controls);
 
   const selectedList = createElement("div", { className: "required-list" });
