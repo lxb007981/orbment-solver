@@ -1,5 +1,5 @@
 import { ELEMENTS, formatValues, parseQuartzCsv } from "./src/quartz.mjs";
-import { LINE_NAMES, SLOT_DISABLED, SLOT_NORMAL, searchSolutions } from "./src/search.mjs";
+import { LINE_NAMES, SLOT_DISABLED, SLOT_NORMAL } from "./src/search.mjs";
 
 const elementColors = {
   地: "#8f6835",
@@ -18,6 +18,10 @@ const slotGrid = savedInputState?.slotGrid ?? createDefaultSlotGrid();
 const savedRequirements = savedInputState?.requirements ?? createDefaultRequirements();
 let quartzList = [];
 const requiredQuartzIds = new Set(savedInputState?.requiredQuartzIds ?? []);
+let activeWorker = null;
+let activeJobId = 0;
+let computeStartedAt = 0;
+let elapsedTimerId = null;
 
 const app = document.querySelector("#app");
 
@@ -308,8 +312,118 @@ function renderLine(lineIndex) {
 
 function renderStatus(message, tone = "neutral") {
   const status = document.querySelector("#status");
-  status.textContent = message;
+  if (!status) {
+    return;
+  }
+
+  status.replaceChildren(document.createTextNode(message));
   status.dataset.tone = tone;
+  delete status.dataset.busy;
+}
+
+function renderBusyStatus(message) {
+  const status = document.querySelector("#status");
+  if (!status) {
+    return;
+  }
+
+  status.dataset.tone = "neutral";
+  status.dataset.busy = "true";
+
+  let messageElement = status.querySelector(".status-message");
+  if (!messageElement) {
+    messageElement = createElement("span", { className: "status-message" });
+    const progress = createElement("div", { className: "busy-progress" });
+    progress.setAttribute("role", "progressbar");
+    progress.setAttribute("aria-label", "Search in progress");
+    status.replaceChildren(messageElement, progress);
+  }
+
+  messageElement.textContent = message;
+}
+
+function formatElapsedTime(milliseconds) {
+  if (milliseconds < 1000) {
+    return "0s";
+  }
+
+  const seconds = Math.floor(milliseconds / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return minutes > 0 ? `${minutes}m ${remainingSeconds}s` : `${seconds}s`;
+}
+
+function updateBusyStatus() {
+  renderBusyStatus(`Computing... ${formatElapsedTime(performance.now() - computeStartedAt)} elapsed`);
+}
+
+function setComputing(isComputing) {
+  const compute = document.querySelector("#compute-button");
+  const cancel = document.querySelector("#cancel-button");
+  const results = document.querySelector("#results");
+
+  if (compute) {
+    compute.disabled = isComputing;
+  }
+
+  if (cancel) {
+    cancel.hidden = !isComputing;
+    cancel.disabled = !isComputing;
+  }
+
+  for (const control of document.querySelectorAll("input, select, .slot-button, .required-chip")) {
+    if (isComputing) {
+      control.dataset.wasDisabled = control.disabled ? "true" : "false";
+      control.disabled = true;
+    } else {
+      control.disabled = control.dataset.wasDisabled === "true";
+      delete control.dataset.wasDisabled;
+    }
+  }
+
+  if (results) {
+    results.setAttribute("aria-busy", String(isComputing));
+  }
+}
+
+function clearElapsedTimer() {
+  if (elapsedTimerId !== null) {
+    clearInterval(elapsedTimerId);
+    elapsedTimerId = null;
+  }
+}
+
+function beginBusyStatus() {
+  computeStartedAt = performance.now();
+  clearElapsedTimer();
+  updateBusyStatus();
+  elapsedTimerId = setInterval(updateBusyStatus, 500);
+}
+
+function finishActiveWorker(worker) {
+  if (worker !== activeWorker) {
+    return false;
+  }
+
+  worker.terminate();
+  activeWorker = null;
+  clearElapsedTimer();
+  setComputing(false);
+  return true;
+}
+
+function cancelActiveCompute(message = "Search canceled.") {
+  if (!activeWorker) {
+    return false;
+  }
+
+  activeJobId += 1;
+  activeWorker.terminate();
+  activeWorker = null;
+  clearElapsedTimer();
+  setComputing(false);
+  renderStatus(message);
+  return true;
 }
 
 function renderSolution(solution, index) {
@@ -379,15 +493,80 @@ function handleCompute() {
     return;
   }
 
+  if (typeof Worker === "undefined") {
+    renderStatus("This browser does not support Web Workers.", "error");
+    return;
+  }
+
+  if (activeWorker) {
+    return;
+  }
+
   saveInputState();
-  const result = searchSolutions(quartzList, slotGrid, readRequirements(), {
-    limit: 20,
-    requiredQuartzIds: [...requiredQuartzIds],
+  let worker;
+  try {
+    worker = new Worker(new URL("./src/search-worker.mjs", import.meta.url), { type: "module" });
+  } catch (error) {
+    renderStatus(`Search failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+    return;
+  }
+
+  const jobId = activeJobId + 1;
+  const payload = {
+    quartzList,
+    slotGrid: slotGrid.map((line) => [...line]),
+    requirements: readRequirements(),
+    options: {
+      limit: 20,
+      requiredQuartzIds: [...requiredQuartzIds],
+    },
+  };
+
+  activeWorker = worker;
+  activeJobId = jobId;
+  setComputing(true);
+  beginBusyStatus();
+
+  worker.addEventListener("message", (event) => {
+    const message = event.data;
+    if (message?.jobId !== activeJobId || worker !== activeWorker) {
+      return;
+    }
+
+    const elapsed = formatElapsedTime(performance.now() - computeStartedAt);
+    if (message.type === "done") {
+      finishActiveWorker(worker);
+      renderStatus(`Search complete in ${elapsed}.`, "ok");
+      renderResults(message.result);
+      return;
+    }
+
+    if (message.type === "error") {
+      finishActiveWorker(worker);
+      renderStatus(`Search failed: ${message.message}`, "error");
+    }
   });
-  renderResults(result);
+
+  worker.addEventListener("error", (event) => {
+    if (worker !== activeWorker) {
+      return;
+    }
+
+    finishActiveWorker(worker);
+    renderStatus(`Search failed: ${event.message || "worker error"}`, "error");
+  });
+
+  try {
+    worker.postMessage({ type: "compute", jobId, payload });
+  } catch (error) {
+    finishActiveWorker(worker);
+    renderStatus(`Search failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+  }
 }
 
 function handleReset() {
+  cancelActiveCompute("");
+
   for (const line of slotGrid) {
     line.fill(SLOT_NORMAL);
   }
@@ -402,6 +581,9 @@ function handleReset() {
     createElement("p", { className: "empty-state", text: "Enter requirements or select required quartz to search." }),
   );
   clearInputState();
+  if (quartzList.length > 0) {
+    renderStatus(`${quartzList.length} quartz loaded.`, "ok");
+  }
 }
 
 function renderApp() {
@@ -413,13 +595,20 @@ function renderApp() {
 
   const compute = createElement("button", { className: "primary-button", text: "Compute" });
   compute.type = "button";
+  compute.id = "compute-button";
   compute.addEventListener("click", handleCompute);
+
+  const cancel = createElement("button", { className: "secondary-button", text: "Cancel" });
+  cancel.type = "button";
+  cancel.id = "cancel-button";
+  cancel.hidden = true;
+  cancel.addEventListener("click", () => cancelActiveCompute());
 
   const reset = createElement("button", { className: "secondary-button", text: "Reset" });
   reset.type = "button";
   reset.addEventListener("click", handleReset);
 
-  actions.append(compute, reset);
+  actions.append(compute, cancel, reset);
   header.append(actions);
   shell.append(header);
 
