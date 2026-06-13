@@ -5,9 +5,9 @@ export const SLOT_DISABLED = "disabled";
 export const LINE_NAMES = ["武器", "护盾", "驱动", "Extra"];
 
 const LINE_MARKER_RULES = [
-  { marker: "刃", allowedLineIndices: new Set([0, 3]) },
-  { marker: "轮", allowedLineIndices: new Set([1, 3]) },
-  { marker: "诗", allowedLineIndices: new Set([2, 3]) },
+  { marker: "刃", allowedLineIndices: [0, 3] },
+  { marker: "轮", allowedLineIndices: [1, 3] },
+  { marker: "诗", allowedLineIndices: [2, 3] },
 ];
 
 function normalizeRequirement(requirement) {
@@ -23,17 +23,8 @@ function hasRequirement(requirement) {
 }
 
 export function allowedLineIndicesForQuartz(quartz) {
-  let allowed = new Set(LINE_NAMES.map((_, lineIndex) => lineIndex));
-
-  for (const rule of LINE_MARKER_RULES) {
-    if (!quartz.name.includes(rule.marker)) {
-      continue;
-    }
-
-    allowed = new Set([...allowed].filter((lineIndex) => rule.allowedLineIndices.has(lineIndex)));
-  }
-
-  return [...allowed].sort((a, b) => a - b);
+  const rule = LINE_MARKER_RULES.find(({ marker }) => quartz.name.includes(marker));
+  return rule ? rule.allowedLineIndices : LINE_NAMES.map((_, lineIndex) => lineIndex);
 }
 
 function canUseQuartzInLine(quartz, lineIndex) {

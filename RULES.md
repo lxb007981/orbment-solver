@@ -38,7 +38,6 @@ Some quartz are restricted by name:
 - Quartz with `轮` in the name can only be placed on `护盾` or `Extra`.
 - Quartz with `诗` in the name can only be placed on `驱动` or `Extra`.
 - Quartz without those markers can be placed on any line.
-- If a quartz name contains multiple restriction markers, all restrictions apply together.
 
 ## Elemental Requirements
 
