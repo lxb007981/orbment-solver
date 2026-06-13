@@ -299,9 +299,14 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
       return;
     }
 
-    assignment[slotIndex] = null;
-    if (canStillReachRequirement(lineIndex, values, remainingSlots, requirement, quartzList, usedQuartzIds)) {
+    const tryEmptySlot = () => {
+      assignment[slotIndex] = null;
       backtrack(slotIndex + 1);
+      assignment[slotIndex] = null;
+    };
+
+    if (requiredQuartzIds.size === 0 && canStillReachRequirement(lineIndex, values, remainingSlots, requirement, quartzList, usedQuartzIds)) {
+      tryEmptySlot();
     }
 
     for (const quartz of candidateQuartzList) {
@@ -336,6 +341,10 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
       if (limited) {
         return;
       }
+    }
+
+    if (requiredQuartzIds.size > 0 && canStillReachRequirement(lineIndex, values, remainingSlots, requirement, quartzList, usedQuartzIds)) {
+      tryEmptySlot();
     }
   }
 

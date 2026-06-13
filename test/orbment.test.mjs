@@ -221,6 +221,27 @@ test("finds mandatory quartz distributions beyond early line candidate buckets",
   assert.ok(requiredNames.every((name) => equippedNames(result.solutions[0]).includes(name)));
 });
 
+test("prioritizes mandatory quartz placements before empty slots", () => {
+  const quartz = parseQuartzCsv(readFileSync(new URL("../quartz.csv", import.meta.url), "utf8"));
+  const requiredNames = ["晓星之诗", "星灵之诗", "胧月之诗", "月灵之诗"];
+  const result = searchSolutions(
+    quartz,
+    grid(
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_NORMAL, SLOT_NORMAL, "风", SLOT_NORMAL],
+      [SLOT_NORMAL, "水", SLOT_NORMAL, SLOT_NORMAL],
+    ),
+    [req(), req(), req({ 风: 6, 幻: 12 }), req({ 水: 3, 幻: 6 })],
+    {
+      requiredQuartzIds: quartzIdsByName(quartz, requiredNames),
+    },
+  );
+
+  assert.ok(result.solutions.length > 0);
+  assert.ok(requiredNames.every((name) => equippedNames(result.solutions[0]).includes(name)));
+});
+
 test("derives allowed line indices from restricted quartz names", () => {
   const quartz = parseQuartzCsv("冻结之刃\t水\t水×3\r\n青晶之轮\t水\t水×3\r\n水灵之诗\t水\t水×3\r\n魔防2\t水\t水×4\r\n");
 
