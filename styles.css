@@ -397,6 +397,11 @@ p {
   font-size: 0.9rem;
 }
 
+.quartz-value.boosted {
+  color: var(--element-color);
+  font-weight: 750;
+}
+
 @media (max-width: 840px) {
   .line-grid {
     grid-template-columns: 1fr;

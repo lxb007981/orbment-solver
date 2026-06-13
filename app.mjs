@@ -151,6 +151,38 @@ function slotTitle(type) {
   return `${type} element-specific slot`;
 }
 
+function appendFormattedValues(container, values, slotType) {
+  const boosted = slotType !== SLOT_NORMAL && slotType !== SLOT_DISABLED;
+  let hasPreviousValue = false;
+
+  for (const element of ELEMENTS) {
+    const value = values[element];
+    if (value <= 0) {
+      continue;
+    }
+
+    if (hasPreviousValue) {
+      container.append(document.createTextNode("，"));
+    }
+
+    const valueToken = createElement("span", { className: boosted ? "quartz-value boosted" : "quartz-value" });
+    valueToken.textContent = `${element}×${value}`;
+    if (boosted) {
+      valueToken.style.setProperty("--element-color", elementColors[element]);
+    }
+    container.append(valueToken);
+    hasPreviousValue = true;
+  }
+}
+
+function renderQuartzMeta(entry) {
+  const meta = createElement("span", { className: "quartz-meta" });
+  meta.append(createElement("span", { text: entry.quartz.element }));
+  meta.append(document.createTextNode(" · "));
+  appendFormattedValues(meta, entry.contribution, entry.slotType);
+  return meta;
+}
+
 function nextSlotType(type) {
   const cycle = [SLOT_NORMAL, SLOT_DISABLED, ...ELEMENTS];
   const index = cycle.indexOf(type);
@@ -448,9 +480,8 @@ function renderSolution(solution, index) {
         item.classList.add("empty");
         item.textContent = `Slot ${slotIndex + 1}: empty`;
       } else {
-        const lock = entry.slotType === SLOT_NORMAL ? "" : ` / ${entry.slotType}×2`;
         item.append(createElement("span", { className: "quartz-name", text: `${slotIndex + 1}. ${entry.quartz.name}` }));
-        item.append(createElement("span", { className: "quartz-meta", text: `${entry.quartz.element}${lock} · ${formatValues(entry.contribution)}` }));
+        item.append(renderQuartzMeta(entry));
       }
       quartzGrid.append(item);
     });
