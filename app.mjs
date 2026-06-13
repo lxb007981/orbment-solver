@@ -146,12 +146,12 @@ function slotLabel(type) {
 
 function slotTitle(type) {
   if (type === SLOT_NORMAL) {
-    return "Normal slot";
+    return "普通孔";
   }
   if (type === SLOT_DISABLED) {
-    return "Disabled slot";
+    return "禁用孔";
   }
-  return `${type} element-specific slot`;
+  return `${type}元素限定孔`;
 }
 
 function appendFormattedValues(container, values, slotType) {
@@ -217,7 +217,7 @@ function conflictingQuartz() {
 }
 
 function alertInvalidQuartzConflict(quartz) {
-  window.alert(`${quartz.name} cannot be in both Required Quartz and Excluded Quartz.`);
+  window.alert(`${quartz.name} 不能同时位于必用结晶回路和禁用结晶回路列表中。`);
 }
 
 function validateQuartzSelections() {
@@ -227,7 +227,7 @@ function validateQuartzSelections() {
   }
 
   alertInvalidQuartzConflict(conflict);
-  renderStatus("Quartz selection is invalid.", "error");
+  renderStatus("结晶回路选择无效。", "error");
   return false;
 }
 
@@ -243,7 +243,7 @@ function renderQuartzPicker({ containerId, titleText, selectId, selectedIds, con
   const controls = createElement("div", { className: "required-controls" });
 
   const elementLabel = createElement("label", { className: "select-field" });
-  elementLabel.append(createElement("span", { text: "Element" }));
+  elementLabel.append(createElement("span", { text: "元素" }));
   const elementSelect = document.createElement("select");
   elementSelect.id = `${selectId}-element`;
   elementSelect.append(new Option("全部", "all"));
@@ -253,7 +253,7 @@ function renderQuartzPicker({ containerId, titleText, selectId, selectedIds, con
   elementLabel.append(elementSelect);
 
   const quartzLabel = createElement("label", { className: "select-field" });
-  quartzLabel.append(createElement("span", { text: "Quartz" }));
+  quartzLabel.append(createElement("span", { text: "结晶回路" }));
   const quartzSelect = document.createElement("select");
   quartzSelect.id = `${selectId}-quartz`;
   quartzLabel.append(quartzSelect);
@@ -265,7 +265,7 @@ function renderQuartzPicker({ containerId, titleText, selectId, selectedIds, con
     );
 
     quartzSelect.replaceChildren();
-    const placeholder = new Option(options.length === 0 ? "No quartz available" : "Select quartz...", "");
+    const placeholder = new Option(options.length === 0 ? "无可用结晶回路" : "选择结晶回路...", "");
     placeholder.disabled = true;
     placeholder.selected = true;
     quartzSelect.append(placeholder);
@@ -310,7 +310,7 @@ function renderQuartzPicker({ containerId, titleText, selectId, selectedIds, con
 
       const chip = createElement("button", { className: "required-chip", text: `${quartz.name} ×` });
       chip.type = "button";
-      chip.title = `Remove ${quartz.name}`;
+      chip.title = `移除 ${quartz.name}`;
       chip.addEventListener("click", () => {
         selectedIds.delete(quartz.id);
         saveInputState();
@@ -325,19 +325,19 @@ function renderQuartzPicker({ containerId, titleText, selectId, selectedIds, con
 function renderQuartzPickers() {
   renderQuartzPicker({
     containerId: "#required-quartz",
-    titleText: "Required Quartz",
+    titleText: "必用结晶回路",
     selectId: "required",
     selectedIds: requiredQuartzIds,
     conflictIds: excludedQuartzIds,
-    emptyText: "No required quartz selected.",
+    emptyText: "未选择必用结晶回路。",
   });
   renderQuartzPicker({
     containerId: "#excluded-quartz",
-    titleText: "Excluded Quartz",
+    titleText: "禁用结晶回路",
     selectId: "excluded",
     selectedIds: excludedQuartzIds,
     conflictIds: requiredQuartzIds,
-    emptyText: "No excluded quartz selected.",
+    emptyText: "未选择禁用结晶回路。",
   });
 }
 
@@ -425,7 +425,7 @@ function renderBusyStatus(message) {
     messageElement = createElement("span", { className: "status-message" });
     const progress = createElement("div", { className: "busy-progress" });
     progress.setAttribute("role", "progressbar");
-    progress.setAttribute("aria-label", "Search in progress");
+    progress.setAttribute("aria-label", "搜索进行中");
     status.replaceChildren(messageElement, progress);
   }
 
@@ -434,17 +434,17 @@ function renderBusyStatus(message) {
 
 function formatElapsedTime(milliseconds) {
   if (milliseconds < 1000) {
-    return "0s";
+    return "0 秒";
   }
 
   const seconds = Math.floor(milliseconds / 1000);
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
-  return minutes > 0 ? `${minutes}m ${remainingSeconds}s` : `${seconds}s`;
+  return minutes > 0 ? `${minutes} 分 ${remainingSeconds} 秒` : `${seconds} 秒`;
 }
 
 function updateBusyStatus() {
-  renderBusyStatus(`Computing... ${formatElapsedTime(performance.now() - computeStartedAt)} elapsed`);
+  renderBusyStatus(`计算中... 已用 ${formatElapsedTime(performance.now() - computeStartedAt)}`);
 }
 
 function setComputing(isComputing) {
@@ -502,7 +502,7 @@ function finishActiveWorker(worker) {
   return true;
 }
 
-function cancelActiveCompute(message = "Search canceled.") {
+function cancelActiveCompute(message = "搜索已取消。") {
   if (!activeWorker) {
     return false;
   }
@@ -518,7 +518,7 @@ function cancelActiveCompute(message = "Search canceled.") {
 
 function renderSolution(solution, index) {
   const article = createElement("article", { className: "solution" });
-  article.append(createElement("h3", { text: `Result ${index + 1}` }));
+  article.append(createElement("h3", { text: `结果 ${index + 1}` }));
 
   solution.lines.forEach((line, lineIndex) => {
     if (!line) {
@@ -536,7 +536,7 @@ function renderSolution(solution, index) {
       const item = createElement("div", { className: "solution-quartz" });
       if (!entry) {
         item.classList.add("empty");
-        item.textContent = `Slot ${slotIndex + 1}: empty`;
+        item.textContent = `槽位 ${slotIndex + 1}：空`;
       } else {
         item.append(createElement("span", { className: "quartz-name", text: `${slotIndex + 1}. ${entry.quartz.name}` }));
         item.append(renderQuartzMeta(entry));
@@ -556,34 +556,34 @@ function renderResults(result) {
   output.replaceChildren();
 
   if (result.skipped) {
-    output.append(createElement("p", { className: "empty-state", text: "Enter requirements or select required quartz to search." }));
+    output.append(createElement("p", { className: "empty-state", text: "请输入需求或选择必用结晶回路后搜索。" }));
     return;
   }
 
   if (result.solutions.length === 0) {
-    output.append(createElement("p", { className: "empty-state", text: "Not found." }));
+    output.append(createElement("p", { className: "empty-state", text: "未找到。" }));
     return;
   }
 
   if (result.limited) {
-    window.alert("More than 20 possible combinations were found. Search stopped and the first 20 results are shown.");
+    window.alert("找到超过 20 种可能组合。已停止搜索并显示前 20 个结果。");
   }
 
   const summary = createElement("p", {
     className: "result-summary",
-    text: `${result.solutions.length} result${result.solutions.length === 1 ? "" : "s"} shown.`,
+    text: `显示 ${result.solutions.length} 个结果。`,
   });
   output.append(summary, ...result.solutions.map(renderSolution));
 }
 
 function handleCompute() {
   if (quartzList.length === 0) {
-    renderStatus("Quartz data is not loaded.", "error");
+    renderStatus("结晶回路数据尚未加载。", "error");
     return;
   }
 
   if (typeof Worker === "undefined") {
-    renderStatus("This browser does not support Web Workers.", "error");
+    renderStatus("当前浏览器不支持 Web Workers。", "error");
     return;
   }
 
@@ -600,7 +600,7 @@ function handleCompute() {
   try {
     worker = new Worker(new URL("./src/search-worker.mjs", import.meta.url), { type: "module" });
   } catch (error) {
-    renderStatus(`Search failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+    renderStatus(`搜索失败：${error instanceof Error ? error.message : String(error)}`, "error");
     return;
   }
 
@@ -630,14 +630,14 @@ function handleCompute() {
     const elapsed = formatElapsedTime(performance.now() - computeStartedAt);
     if (message.type === "done") {
       finishActiveWorker(worker);
-      renderStatus(`Search complete in ${elapsed}.`, "ok");
+      renderStatus(`搜索完成，用时 ${elapsed}。`, "ok");
       renderResults(message.result);
       return;
     }
 
     if (message.type === "error") {
       finishActiveWorker(worker);
-      renderStatus(`Search failed: ${message.message}`, "error");
+      renderStatus(`搜索失败：${message.message}`, "error");
     }
   });
 
@@ -647,14 +647,14 @@ function handleCompute() {
     }
 
     finishActiveWorker(worker);
-    renderStatus(`Search failed: ${event.message || "worker error"}`, "error");
+    renderStatus(`搜索失败：${event.message || "worker 错误"}`, "error");
   });
 
   try {
     worker.postMessage({ type: "compute", jobId, payload });
   } catch (error) {
     finishActiveWorker(worker);
-    renderStatus(`Search failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+    renderStatus(`搜索失败：${error instanceof Error ? error.message : String(error)}`, "error");
   }
 }
 
@@ -673,11 +673,11 @@ function handleReset() {
   excludedQuartzIds.clear();
   renderQuartzPickers();
   document.querySelector("#results").replaceChildren(
-    createElement("p", { className: "empty-state", text: "Enter requirements or select required quartz to search." }),
+    createElement("p", { className: "empty-state", text: "请输入需求或选择必用结晶回路后搜索。" }),
   );
   clearInputState();
   if (quartzList.length > 0) {
-    renderStatus(`${quartzList.length} quartz loaded.`, "ok");
+    renderStatus(`已加载 ${quartzList.length} 个结晶回路。`, "ok");
   }
 }
 
@@ -685,21 +685,21 @@ function renderApp() {
   const shell = createElement("main", { className: "shell" });
 
   const header = createElement("header", { className: "page-header" });
-  header.append(createElement("h1", { text: "Orbment Solver" }));
+  header.append(createElement("h1", { text: "导力器求解器" }));
   const actions = createElement("div", { className: "actions" });
 
-  const compute = createElement("button", { className: "primary-button", text: "Compute" });
+  const compute = createElement("button", { className: "primary-button", text: "计算" });
   compute.type = "button";
   compute.id = "compute-button";
   compute.addEventListener("click", handleCompute);
 
-  const cancel = createElement("button", { className: "secondary-button", text: "Cancel" });
+  const cancel = createElement("button", { className: "secondary-button", text: "取消" });
   cancel.type = "button";
   cancel.id = "cancel-button";
   cancel.hidden = true;
   cancel.addEventListener("click", () => cancelActiveCompute());
 
-  const reset = createElement("button", { className: "secondary-button", text: "Reset" });
+  const reset = createElement("button", { className: "secondary-button", text: "重置" });
   reset.type = "button";
   reset.addEventListener("click", handleReset);
 
@@ -707,7 +707,7 @@ function renderApp() {
   header.append(actions);
   shell.append(header);
 
-  const status = createElement("div", { className: "status", text: "Loading quartz.csv..." });
+  const status = createElement("div", { className: "status", text: "正在加载 quartz.csv..." });
   status.id = "status";
   shell.append(status);
 
@@ -727,7 +727,7 @@ function renderApp() {
 
   const results = createElement("section", { className: "results" });
   results.id = "results";
-  results.append(createElement("p", { className: "empty-state", text: "Enter requirements or select required quartz to search." }));
+  results.append(createElement("p", { className: "empty-state", text: "请输入需求或选择必用结晶回路后搜索。" }));
   shell.append(results);
 
   app.replaceChildren(shell);
@@ -758,9 +758,9 @@ async function loadQuartz() {
       saveInputState();
     }
     renderQuartzPickers();
-    renderStatus(`${quartzList.length} quartz loaded.`, "ok");
+    renderStatus(`已加载 ${quartzList.length} 个结晶回路。`, "ok");
   } catch (error) {
-    renderStatus(`Failed to load quartz.csv: ${error.message}`, "error");
+    renderStatus(`加载 quartz.csv 失败：${error.message}`, "error");
   }
 }
 
