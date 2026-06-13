@@ -75,9 +75,13 @@ function meetsRequirement(values, requirement) {
   return ELEMENTS.every((element) => values[element] >= requirement[element]);
 }
 
-function isMinimalAssignment(assignment, values, requirement) {
+function isMinimalAssignment(assignment, values, requirement, requiredQuartzIds) {
   for (const entry of assignment) {
     if (!entry) {
+      continue;
+    }
+
+    if (requiredQuartzIds.has(entry.quartz.id)) {
       continue;
     }
 
@@ -132,15 +136,16 @@ function signatureForAssignment(assignment) {
     .join(",");
 }
 
-function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, usedQuartzIds, limit) {
+function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, usedQuartzIds, requiredQuartzIds, limit) {
   const values = emptyValues();
   const assignment = Array(slotTypes.length).fill(null);
+  const includedRequiredQuartzIds = new Set();
   const results = [];
   const seen = new Set();
   let limited = false;
 
   function recordResult() {
-    if (!isMinimalAssignment(assignment, values, requirement)) {
+    if (!isMinimalAssignment(assignment, values, requirement, requiredQuartzIds)) {
       return;
     }
 
@@ -162,6 +167,7 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
           : null,
       ),
       values: { ...values },
+      requiredQuartzIds: [...includedRequiredQuartzIds],
     });
   }
 
@@ -171,9 +177,9 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
       return;
     }
 
-    if (meetsRequirement(values, requirement)) {
+    const requirementMet = meetsRequirement(values, requirement);
+    if (requirementMet) {
       recordResult();
-      return;
     }
 
     if (slotIndex === slotTypes.length) {
@@ -203,8 +209,16 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
         continue;
       }
 
+      const isRequired = requiredQuartzIds.has(quartz.id);
+      if (requirementMet && !isRequired) {
+        continue;
+      }
+
       const contribution = contributionForSlot(quartz, slotType);
       usedQuartzIds.add(quartz.id);
+      if (isRequired) {
+        includedRequiredQuartzIds.add(quartz.id);
+      }
       addValues(values, contribution);
       assignment[slotIndex] = { quartz, slotType, contribution };
 
@@ -214,6 +228,9 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
 
       assignment[slotIndex] = null;
       subtractValues(values, contribution);
+      if (isRequired) {
+        includedRequiredQuartzIds.delete(quartz.id);
+      }
       usedQuartzIds.delete(quartz.id);
 
       if (limited) {
@@ -228,12 +245,22 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
 
 export function searchSolutions(quartzList, slotGrid, requirements, options = {}) {
   const limit = Number(options.limit ?? 20);
+  const knownQuartzIds = new Set(quartzList.map((quartz) => quartz.id));
+  const requiredQuartzIds = new Set(
+    (options.requiredQuartzIds ?? [])
+      .map((id) => Number(id))
+      .filter((id) => knownQuartzIds.has(id)),
+  );
   const normalizedRequirements = requirements.map(normalizeRequirement);
   const activeLines = normalizedRequirements
     .map((requirement, lineIndex) => ({ lineIndex, requirement }))
     .filter(({ requirement }) => hasRequirement(requirement));
+  const lineSearchOrder =
+    requiredQuartzIds.size > 0
+      ? slotGrid.map((_, lineIndex) => ({ lineIndex, requirement: normalizedRequirements[lineIndex] }))
+      : activeLines;
 
-  if (activeLines.length === 0) {
+  if (lineSearchOrder.length === 0) {
     return { solutions: [], limited: false, skipped: true };
   }
 
@@ -242,13 +269,17 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
   const currentLines = Array(slotGrid.length).fill(null);
   let limited = false;
 
-  function backtrack(activeLineIndex) {
+  function backtrack(lineSearchIndex, remainingRequiredQuartzIds) {
     if (solutions.length > limit) {
       limited = true;
       return;
     }
 
-    if (activeLineIndex === activeLines.length) {
+    if (lineSearchIndex === lineSearchOrder.length) {
+      if (remainingRequiredQuartzIds.size > 0) {
+        return;
+      }
+
       solutions.push({
         lines: currentLines.map((line) =>
           line
@@ -263,17 +294,18 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
       return;
     }
 
-    const { lineIndex, requirement } = activeLines[activeLineIndex];
+    const { lineIndex, requirement } = lineSearchOrder[lineSearchIndex];
     const lineResult = searchLineCombinations(
       lineIndex,
       slotGrid[lineIndex],
       requirement,
       quartzList,
       usedQuartzIds,
+      remainingRequiredQuartzIds,
       limit + 1,
     );
 
-    if (lineResult.limited && activeLines.length === 1) {
+    if (lineResult.limited && lineSearchOrder.length === 1) {
       limited = true;
     }
 
@@ -283,8 +315,14 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
         usedQuartzIds.add(id);
       }
 
-      currentLines[lineIndex] = combination;
-      backtrack(activeLineIndex + 1);
+      const nextRemainingRequiredQuartzIds = new Set(remainingRequiredQuartzIds);
+      for (const id of combination.requiredQuartzIds) {
+        nextRemainingRequiredQuartzIds.delete(id);
+      }
+
+      const hasEquippedQuartz = ids.length > 0;
+      currentLines[lineIndex] = hasRequirement(requirement) || hasEquippedQuartz ? combination : null;
+      backtrack(lineSearchIndex + 1, nextRemainingRequiredQuartzIds);
       currentLines[lineIndex] = null;
 
       for (const id of ids) {
@@ -298,7 +336,7 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
     }
   }
 
-  backtrack(0);
+  backtrack(0, requiredQuartzIds);
 
   return {
     solutions: solutions.slice(0, limit),

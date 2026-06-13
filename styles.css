@@ -25,7 +25,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -114,6 +115,74 @@ p {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.required-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.required-panel h2 {
+  font-size: 1.05rem;
+  margin-bottom: 12px;
+}
+
+.required-controls {
+  display: grid;
+  grid-template-columns: minmax(100px, 140px) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.select-field {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.select-field select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #fff;
+  color: var(--text);
+}
+
+.select-field select:focus {
+  outline: 3px solid rgba(31, 111, 235, 0.18);
+  border-color: var(--accent);
+}
+
+.required-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.empty-required {
+  color: var(--muted);
+  padding: 4px 0;
+}
+
+.required-chip {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6f8fa;
+  color: var(--text);
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.required-chip:hover {
+  border-color: var(--accent);
 }
 
 .line-panel {
@@ -303,6 +372,10 @@ p {
 
   .requirements {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .required-controls {
+    grid-template-columns: 1fr;
   }
 
   .solution-line-title,

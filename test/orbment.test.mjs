@@ -29,6 +29,14 @@ function reqs(lineIndex, requirement) {
   return Array.from({ length: 4 }, (_, index) => (index === lineIndex ? requirement : req()));
 }
 
+function equippedNames(solution) {
+  return solution.lines
+    .flatMap((line) => (line ? line.assignment : []))
+    .filter(Boolean)
+    .map((entry) => entry.quartz.name)
+    .sort();
+}
+
 test("parses tab-delimited quartz CSV rows", () => {
   const quartz = parseQuartzCsv("魔防2\t水\t水×4\r\n三月兔\t空\t空×5，风×3\r\n");
 
@@ -180,4 +188,100 @@ test("allows unrestricted quartz on any line", () => {
   for (let lineIndex = 0; lineIndex < 4; lineIndex += 1) {
     assert.equal(searchSolutions(quartz, slots, reqs(lineIndex, req({ 水: 4 }))).solutions.length, 1);
   }
+});
+
+test("searches required quartz even without elemental requirements", () => {
+  const quartz = parseQuartzCsv("魔防2\t水\t水×4\r\n");
+  const slots = grid(
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+  const result = searchSolutions(quartz, slots, [req(), req(), req(), req()], {
+    requiredQuartzIds: [quartz[0].id],
+  });
+
+  assert.equal(result.skipped, false);
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["魔防2"]);
+});
+
+test("requires every selected quartz to appear in the final result", () => {
+  const quartz = parseQuartzCsv("魔防2\t水\t水×4\r\n攻击1\t火\t火×2\r\n");
+  const slots = grid(
+    [SLOT_NORMAL, SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+  const result = searchSolutions(quartz, slots, [req(), req(), req(), req()], {
+    requiredQuartzIds: quartz.map((item) => item.id),
+  });
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["攻击1", "魔防2"]);
+});
+
+test("keeps required quartz even when they are not needed for elemental totals", () => {
+  const quartz = parseQuartzCsv("魔防2\t水\t水×4\r\n攻击1\t火\t火×2\r\n");
+  const slots = grid(
+    [SLOT_NORMAL, SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+  const result = searchSolutions(quartz, slots, [req({ 水: 4 }), req(), req(), req()], {
+    requiredQuartzIds: [quartz[1].id],
+  });
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["攻击1", "魔防2"]);
+});
+
+test("required quartz obey line restrictions", () => {
+  const quartz = parseQuartzCsv("水灵之诗\t水\t水×3\r\n");
+  const weaponOnlySlots = grid(
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+  const extraOnlySlots = grid(
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+
+  assert.equal(
+    searchSolutions(quartz, weaponOnlySlots, [req(), req(), req(), req()], { requiredQuartzIds: [quartz[0].id] }).solutions.length,
+    0,
+  );
+  assert.equal(
+    searchSolutions(quartz, extraOnlySlots, [req(), req(), req(), req()], { requiredQuartzIds: [quartz[0].id] }).solutions.length,
+    1,
+  );
+});
+
+test("required quartz obey element-specific and disabled slot restrictions", () => {
+  const quartz = parseQuartzCsv("魔防2\t水\t水×4\r\n");
+  const fireSlot = grid(
+    ["火", SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+  const disabledSlots = grid(
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+
+  assert.equal(searchSolutions(quartz, fireSlot, [req(), req(), req(), req()], { requiredQuartzIds: [quartz[0].id] }).solutions.length, 0);
+  assert.equal(
+    searchSolutions(quartz, disabledSlots, [req(), req(), req(), req()], { requiredQuartzIds: [quartz[0].id] }).solutions.length,
+    0,
+  );
 });

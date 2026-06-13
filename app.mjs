@@ -13,6 +13,7 @@ const elementColors = {
 
 const slotGrid = Array.from({ length: 4 }, () => Array(4).fill(SLOT_NORMAL));
 let quartzList = [];
+const requiredQuartzIds = new Set();
 
 const app = document.querySelector("#app");
 
@@ -62,6 +63,86 @@ function readRequirements() {
     }
     return requirement;
   });
+}
+
+function renderRequiredQuartzPicker() {
+  const container = document.querySelector("#required-quartz");
+  if (!container) {
+    return;
+  }
+
+  container.replaceChildren();
+
+  const title = createElement("h2", { text: "Required Quartz" });
+  const controls = createElement("div", { className: "required-controls" });
+
+  const elementLabel = createElement("label", { className: "select-field" });
+  elementLabel.append(createElement("span", { text: "Element" }));
+  const elementSelect = document.createElement("select");
+  elementSelect.id = "required-element";
+  elementSelect.append(new Option("全部", "all"));
+  for (const element of ELEMENTS) {
+    elementSelect.append(new Option(element, element));
+  }
+  elementLabel.append(elementSelect);
+
+  const quartzLabel = createElement("label", { className: "select-field" });
+  quartzLabel.append(createElement("span", { text: "Quartz" }));
+  const quartzSelect = document.createElement("select");
+  quartzSelect.id = "required-quartz-select";
+  quartzLabel.append(quartzSelect);
+
+  function updateQuartzOptions() {
+    const selectedElement = elementSelect.value;
+    const options = quartzList.filter(
+      (quartz) => !requiredQuartzIds.has(quartz.id) && (selectedElement === "all" || quartz.element === selectedElement),
+    );
+
+    quartzSelect.replaceChildren();
+    for (const quartz of options) {
+      quartzSelect.append(new Option(quartz.name, String(quartz.id)));
+    }
+    quartzSelect.disabled = options.length === 0;
+  }
+
+  elementSelect.addEventListener("change", updateQuartzOptions);
+  updateQuartzOptions();
+
+  const addButton = createElement("button", { className: "secondary-button", text: "Add" });
+  addButton.type = "button";
+  addButton.addEventListener("click", () => {
+    if (!quartzSelect.value) {
+      return;
+    }
+
+    requiredQuartzIds.add(Number(quartzSelect.value));
+    renderRequiredQuartzPicker();
+  });
+
+  controls.append(elementLabel, quartzLabel, addButton);
+  container.append(title, controls);
+
+  const selectedList = createElement("div", { className: "required-list" });
+  if (requiredQuartzIds.size === 0) {
+    selectedList.append(createElement("p", { className: "empty-required", text: "No required quartz selected." }));
+  } else {
+    for (const quartzId of requiredQuartzIds) {
+      const quartz = quartzList.find((item) => item.id === quartzId);
+      if (!quartz) {
+        continue;
+      }
+
+      const chip = createElement("button", { className: "required-chip", text: `${quartz.name} ×` });
+      chip.type = "button";
+      chip.title = `Remove ${quartz.name}`;
+      chip.addEventListener("click", () => {
+        requiredQuartzIds.delete(quartz.id);
+        renderRequiredQuartzPicker();
+      });
+      selectedList.append(chip);
+    }
+  }
+  container.append(selectedList);
 }
 
 function renderSlots(lineIndex, container) {
@@ -164,7 +245,7 @@ function renderResults(result) {
   output.replaceChildren();
 
   if (result.skipped) {
-    output.append(createElement("p", { className: "empty-state", text: "Enter at least one line requirement to search." }));
+    output.append(createElement("p", { className: "empty-state", text: "Enter requirements or select required quartz to search." }));
     return;
   }
 
@@ -190,7 +271,10 @@ function handleCompute() {
     return;
   }
 
-  const result = searchSolutions(quartzList, slotGrid, readRequirements(), { limit: 20 });
+  const result = searchSolutions(quartzList, slotGrid, readRequirements(), {
+    limit: 20,
+    requiredQuartzIds: [...requiredQuartzIds],
+  });
   renderResults(result);
 }
 
@@ -203,8 +287,10 @@ function handleReset() {
   document.querySelectorAll("input[data-requirement]").forEach((input) => {
     input.value = "";
   });
+  requiredQuartzIds.clear();
+  renderRequiredQuartzPicker();
   document.querySelector("#results").replaceChildren(
-    createElement("p", { className: "empty-state", text: "Enter requirements and compute to search combinations." }),
+    createElement("p", { className: "empty-state", text: "Enter requirements or select required quartz to search." }),
   );
 }
 
@@ -231,6 +317,10 @@ function renderApp() {
   status.id = "status";
   shell.append(status);
 
+  const requiredQuartz = createElement("section", { className: "required-panel" });
+  requiredQuartz.id = "required-quartz";
+  shell.append(requiredQuartz);
+
   const grid = createElement("div", { className: "line-grid" });
   for (let lineIndex = 0; lineIndex < 4; lineIndex += 1) {
     grid.append(renderLine(lineIndex));
@@ -239,7 +329,7 @@ function renderApp() {
 
   const results = createElement("section", { className: "results" });
   results.id = "results";
-  results.append(createElement("p", { className: "empty-state", text: "Enter requirements and compute to search combinations." }));
+  results.append(createElement("p", { className: "empty-state", text: "Enter requirements or select required quartz to search." }));
   shell.append(results);
 
   app.replaceChildren(shell);
@@ -253,6 +343,7 @@ async function loadQuartz() {
     }
 
     quartzList = parseQuartzCsv(await response.text());
+    renderRequiredQuartzPicker();
     renderStatus(`${quartzList.length} quartz loaded.`, "ok");
   } catch (error) {
     renderStatus(`Failed to load quartz.csv: ${error.message}`, "error");
