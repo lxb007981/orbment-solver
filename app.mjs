@@ -1,5 +1,5 @@
 import { ELEMENTS, formatValues, parseQuartzCsv } from "./src/quartz.mjs";
-import { SLOT_DISABLED, SLOT_NORMAL, searchSolutions } from "./src/search.mjs";
+import { LINE_NAMES, SLOT_DISABLED, SLOT_NORMAL, searchSolutions } from "./src/search.mjs";
 
 const elementColors = {
   地: "#8f6835",
@@ -88,7 +88,7 @@ function renderLine(lineIndex) {
   section.dataset.line = String(lineIndex);
 
   const header = createElement("div", { className: "line-header" });
-  header.append(createElement("h2", { text: `Line ${lineIndex + 1}` }));
+  header.append(createElement("h2", { text: LINE_NAMES[lineIndex] }));
 
   const slots = createElement("div", { className: "slots" });
   renderSlots(lineIndex, slots);
@@ -134,7 +134,7 @@ function renderSolution(solution, index) {
 
     const lineBlock = createElement("div", { className: "solution-line" });
     const title = createElement("div", { className: "solution-line-title" });
-    title.append(createElement("strong", { text: `Line ${lineIndex + 1}` }));
+    title.append(createElement("strong", { text: LINE_NAMES[lineIndex] }));
     title.append(createElement("span", { text: formatValues(line.values) }));
     lineBlock.append(title);
 
@@ -143,7 +143,7 @@ function renderSolution(solution, index) {
       const item = createElement("div", { className: "solution-quartz" });
       if (!entry) {
         item.classList.add("empty");
-        item.textContent = `Slot ${slotIndex + 1}: disabled`;
+        item.textContent = `Slot ${slotIndex + 1}: empty`;
       } else {
         const lock = entry.slotType === SLOT_NORMAL ? "" : ` / ${entry.slotType}×2`;
         item.append(createElement("span", { className: "quartz-name", text: `${slotIndex + 1}. ${entry.quartz.name}` }));

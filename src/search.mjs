@@ -2,6 +2,13 @@ import { ELEMENTS, emptyValues } from "./quartz.mjs";
 
 export const SLOT_NORMAL = "normal";
 export const SLOT_DISABLED = "disabled";
+export const LINE_NAMES = ["武器", "护盾", "驱动", "Extra"];
+
+const LINE_MARKER_RULES = [
+  { marker: "刃", allowedLineIndices: new Set([0, 3]) },
+  { marker: "轮", allowedLineIndices: new Set([1, 3]) },
+  { marker: "诗", allowedLineIndices: new Set([2, 3]) },
+];
 
 function normalizeRequirement(requirement) {
   const normalized = emptyValues();
@@ -15,12 +22,30 @@ function hasRequirement(requirement) {
   return ELEMENTS.some((element) => requirement[element] > 0);
 }
 
-function canUseQuartzInSlot(quartz, slotType) {
+export function allowedLineIndicesForQuartz(quartz) {
+  let allowed = new Set(LINE_NAMES.map((_, lineIndex) => lineIndex));
+
+  for (const rule of LINE_MARKER_RULES) {
+    if (!quartz.name.includes(rule.marker)) {
+      continue;
+    }
+
+    allowed = new Set([...allowed].filter((lineIndex) => rule.allowedLineIndices.has(lineIndex)));
+  }
+
+  return [...allowed].sort((a, b) => a - b);
+}
+
+function canUseQuartzInLine(quartz, lineIndex) {
+  return allowedLineIndicesForQuartz(quartz).includes(lineIndex);
+}
+
+function canUseQuartzInSlot(quartz, slotType, lineIndex) {
   if (slotType === SLOT_DISABLED) {
     return false;
   }
 
-  return slotType === SLOT_NORMAL || quartz.element === slotType;
+  return canUseQuartzInLine(quartz, lineIndex) && (slotType === SLOT_NORMAL || quartz.element === slotType);
 }
 
 export function contributionForSlot(quartz, slotType) {
@@ -50,7 +75,23 @@ function meetsRequirement(values, requirement) {
   return ELEMENTS.every((element) => values[element] >= requirement[element]);
 }
 
-function canStillReachRequirement(values, remainingSlots, requirement, quartzList, usedQuartzIds) {
+function isMinimalAssignment(assignment, values, requirement) {
+  for (const entry of assignment) {
+    if (!entry) {
+      continue;
+    }
+
+    const reduced = { ...values };
+    subtractValues(reduced, entry.contribution);
+    if (meetsRequirement(reduced, requirement)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function canStillReachRequirement(lineIndex, values, remainingSlots, requirement, quartzList, usedQuartzIds) {
   for (const element of ELEMENTS) {
     if (values[element] >= requirement[element]) {
       continue;
@@ -64,7 +105,7 @@ function canStillReachRequirement(values, remainingSlots, requirement, quartzLis
 
       let best = 0;
       for (const slotType of remainingSlots) {
-        if (canUseQuartzInSlot(quartz, slotType)) {
+        if (canUseQuartzInSlot(quartz, slotType, lineIndex)) {
           best = Math.max(best, contributionForSlot(quartz, slotType)[element]);
         }
       }
@@ -98,36 +139,44 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
   const seen = new Set();
   let limited = false;
 
+  function recordResult() {
+    if (!isMinimalAssignment(assignment, values, requirement)) {
+      return;
+    }
+
+    const signature = signatureForAssignment(assignment);
+    if (seen.has(signature)) {
+      return;
+    }
+
+    seen.add(signature);
+    results.push({
+      lineIndex,
+      assignment: assignment.map((entry) =>
+        entry
+          ? {
+              quartz: entry.quartz,
+              slotType: entry.slotType,
+              contribution: { ...entry.contribution },
+            }
+          : null,
+      ),
+      values: { ...values },
+    });
+  }
+
   function backtrack(slotIndex) {
     if (results.length > limit) {
       limited = true;
       return;
     }
 
+    if (meetsRequirement(values, requirement)) {
+      recordResult();
+      return;
+    }
+
     if (slotIndex === slotTypes.length) {
-      if (!meetsRequirement(values, requirement)) {
-        return;
-      }
-
-      const signature = signatureForAssignment(assignment);
-      if (seen.has(signature)) {
-        return;
-      }
-
-      seen.add(signature);
-      results.push({
-        lineIndex,
-        assignment: assignment.map((entry) =>
-          entry
-            ? {
-                quartz: entry.quartz,
-                slotType: entry.slotType,
-                contribution: { ...entry.contribution },
-              }
-            : null,
-        ),
-        values: { ...values },
-      });
       return;
     }
 
@@ -140,17 +189,17 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
     }
 
     const remainingSlots = slotTypes.slice(slotIndex + 1).filter((type) => type !== SLOT_DISABLED);
-    if (!canStillReachRequirement(values, [slotType, ...remainingSlots], requirement, quartzList, usedQuartzIds)) {
+    if (!canStillReachRequirement(lineIndex, values, [slotType, ...remainingSlots], requirement, quartzList, usedQuartzIds)) {
       return;
     }
 
     assignment[slotIndex] = null;
-    if (canStillReachRequirement(values, remainingSlots, requirement, quartzList, usedQuartzIds)) {
+    if (canStillReachRequirement(lineIndex, values, remainingSlots, requirement, quartzList, usedQuartzIds)) {
       backtrack(slotIndex + 1);
     }
 
     for (const quartz of quartzList) {
-      if (usedQuartzIds.has(quartz.id) || !canUseQuartzInSlot(quartz, slotType)) {
+      if (usedQuartzIds.has(quartz.id) || !canUseQuartzInSlot(quartz, slotType, lineIndex)) {
         continue;
       }
 
@@ -159,7 +208,7 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
       addValues(values, contribution);
       assignment[slotIndex] = { quartz, slotType, contribution };
 
-      if (canStillReachRequirement(values, remainingSlots, requirement, quartzList, usedQuartzIds)) {
+      if (canStillReachRequirement(lineIndex, values, remainingSlots, requirement, quartzList, usedQuartzIds)) {
         backtrack(slotIndex + 1);
       }
 
