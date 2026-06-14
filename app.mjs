@@ -27,6 +27,10 @@ const savedRequirements = savedInputState?.requirements ?? createDefaultRequirem
 let quartzList = [];
 const requiredQuartzIds = new Set(savedInputState?.requiredQuartzIds ?? []);
 const excludedQuartzIds = new Set(savedInputState?.excludedQuartzIds ?? []);
+const quartzPickerElementSelections = {
+  required: "all",
+  excluded: "all",
+};
 let activeWorker = null;
 let activeJobId = 0;
 let activeQuartzLoadId = 0;
@@ -261,6 +265,17 @@ function validateQuartzSelections() {
   return false;
 }
 
+function quartzPickerElementSelection(selectId) {
+  const selectedElement = quartzPickerElementSelections[selectId];
+  return selectedElement === "all" || ELEMENTS.includes(selectedElement) ? selectedElement : "all";
+}
+
+function resetQuartzPickerElementSelections() {
+  for (const selectId of Object.keys(quartzPickerElementSelections)) {
+    quartzPickerElementSelections[selectId] = "all";
+  }
+}
+
 function renderQuartzPicker({ containerId, titleText, selectId, selectedIds, conflictIds, emptyText }) {
   const container = document.querySelector(containerId);
   if (!container) {
@@ -280,6 +295,7 @@ function renderQuartzPicker({ containerId, titleText, selectId, selectedIds, con
   for (const element of ELEMENTS) {
     elementSelect.append(new Option(element, element));
   }
+  elementSelect.value = quartzPickerElementSelection(selectId);
   elementLabel.append(elementSelect);
 
   const quartzLabel = createElement("label", { className: "select-field" });
@@ -305,7 +321,10 @@ function renderQuartzPicker({ containerId, titleText, selectId, selectedIds, con
     quartzSelect.disabled = options.length === 0;
   }
 
-  elementSelect.addEventListener("change", updateQuartzOptions);
+  elementSelect.addEventListener("change", () => {
+    quartzPickerElementSelections[selectId] = elementSelect.value;
+    updateQuartzOptions();
+  });
   quartzSelect.addEventListener("change", () => {
     if (quartzSelect.value === "") {
       return;
@@ -701,6 +720,7 @@ function handleReset() {
   });
   requiredQuartzIds.clear();
   excludedQuartzIds.clear();
+  resetQuartzPickerElementSelections();
   renderQuartzPickers();
   document.querySelector("#results").replaceChildren(
     createElement("p", { className: "empty-state", text: "请输入需求或选择必用结晶回路后搜索。" }),
