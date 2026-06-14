@@ -759,7 +759,7 @@ function renderApp() {
   const shell = createElement("main", { className: "shell" });
 
   const header = createElement("header", { className: "page-header" });
-  header.append(createElement("h1", { text: "导力器求解器" }));
+  header.append(createElement("h1", { text: "黎界轨迹导力器求解器" }));
   const headerControls = createElement("div", { className: "header-controls" });
 
   const sourceLabel = createElement("label", { className: "select-field source-field" });
