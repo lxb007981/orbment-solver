@@ -396,6 +396,7 @@ function renderQuartzPickers() {
 function renderSearchOptions() {
   const section = createElement("section", { className: "search-options" });
   const label = createElement("label", { className: "checkbox-field" });
+  const helpText = "开启后，使用同一组结晶回路的不同槽位排列只显示为一个结果；关闭后会分别显示每种槽位排列。";
   const input = document.createElement("input");
   input.type = "checkbox";
   input.id = "dedupe-by-quartz-list";
@@ -406,7 +407,14 @@ function renderSearchOptions() {
   });
 
   label.append(input, createElement("span", { text: "合并同回路结果" }));
-  section.append(label);
+
+  const help = createElement("span", { className: "option-help", text: "?" });
+  help.tabIndex = 0;
+  help.title = helpText;
+  help.dataset.tooltip = helpText;
+  help.setAttribute("aria-label", helpText);
+
+  section.append(label, help);
   return section;
 }
 

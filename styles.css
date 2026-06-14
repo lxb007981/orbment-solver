@@ -192,6 +192,8 @@ p {
 
 .search-options {
   display: flex;
+  align-items: center;
+  gap: 8px;
   justify-content: flex-end;
   margin-bottom: 14px;
 }
@@ -209,6 +211,57 @@ p {
   width: 18px;
   aspect-ratio: 1;
   accent-color: var(--accent);
+}
+
+.option-help {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--muted);
+  cursor: help;
+  font-size: 0.78rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.option-help:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.option-help::after {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 10;
+  width: min(320px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.14);
+  color: var(--text);
+  content: attr(data-tooltip);
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1.45;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+.option-help:hover::after,
+.option-help:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .required-panel h2 {
@@ -504,6 +557,11 @@ p {
 
   .search-options {
     justify-content: flex-start;
+  }
+
+  .option-help::after {
+    right: auto;
+    left: 0;
   }
 
   .solution-line-title,
