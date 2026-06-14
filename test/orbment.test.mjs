@@ -119,6 +119,55 @@ test("stops after more than the requested solution limit", () => {
   assert.equal(result.limited, true);
 });
 
+test("deduplicates final plans by equipped quartz list by default", () => {
+  const quartz = parseQuartzCsv("水风\t水\t水×4，风×1\r\n水火\t水\t水×4，火×1\r\n");
+  const slots = grid(
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+  const result = searchSolutions(quartz, slots, [req({ 水: 4 }), req({ 水: 4 }), req(), req()]);
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["水火", "水风"]);
+});
+
+test("can return separate arrangements for the same quartz list when dedupe is disabled", () => {
+  const quartz = parseQuartzCsv("水风\t水\t水×4，风×1\r\n水火\t水\t水×4，火×1\r\n");
+  const slots = grid(
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+  const result = searchSolutions(quartz, slots, [req({ 水: 4 }), req({ 水: 4 }), req(), req()], {
+    dedupeByQuartzList: false,
+  });
+  const arrangements = result.solutions
+    .map((solution) => solution.lines.slice(0, 2).map((line) => line.assignment.find(Boolean).quartz.name).join("/"))
+    .sort();
+
+  assert.deepEqual(arrangements, ["水火/水风", "水风/水火"]);
+});
+
+test("deduplicates mandatory quartz placement variants without elemental requirements", () => {
+  const quartz = parseQuartzCsv("水风\t水\t水×4，风×1\r\n水火\t水\t水×4，火×1\r\n");
+  const slots = grid(
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+  const defaultResult = searchSolutions(quartz, slots, [req(), req(), req(), req()], {
+    requiredQuartzIds: quartz.map((item) => item.id),
+  });
+  const arrangementResult = searchSolutions(quartz, slots, [req(), req(), req(), req()], {
+    requiredQuartzIds: quartz.map((item) => item.id),
+    dedupeByQuartzList: false,
+  });
+
+  assert.equal(defaultResult.solutions.length, 1);
+  assert.deepEqual(equippedNames(defaultResult.solutions[0]), ["水火", "水风"]);
+  assert.ok(arrangementResult.solutions.length > 1);
+});
+
 test("filters line assignments with irrelevant extra quartz", () => {
   const quartz = parseQuartzCsv("水1\t水\t水×1\r\n水2\t水\t水×1\r\n水3\t水\t水×1\r\n火1\t火\t火×1\r\n");
   const result = searchSolutions(quartz, grid([SLOT_NORMAL, SLOT_NORMAL, SLOT_NORMAL, SLOT_NORMAL]), [req({ 水: 3 }), req(), req(), req()]);

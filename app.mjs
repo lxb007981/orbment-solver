@@ -24,6 +24,7 @@ const savedInputState = loadInputState();
 let selectedQuartzSourceId = loadQuartzSourceId();
 const slotGrid = savedInputState?.slotGrid ?? createDefaultSlotGrid();
 const savedRequirements = savedInputState?.requirements ?? createDefaultRequirements();
+let dedupeByQuartzList = savedInputState?.dedupeByQuartzList ?? true;
 let quartzList = [];
 const requiredQuartzIds = new Set(savedInputState?.requiredQuartzIds ?? []);
 const excludedQuartzIds = new Set(savedInputState?.excludedQuartzIds ?? []);
@@ -126,6 +127,7 @@ function loadInputState() {
       requirements: normalizeStoredRequirements(state.requirements),
       requiredQuartzIds: normalizeStoredRequiredQuartzIds(state.requiredQuartzIds),
       excludedQuartzIds: normalizeStoredRequiredQuartzIds(state.excludedQuartzIds),
+      dedupeByQuartzList: state.dedupeByQuartzList !== false,
     };
   } catch {
     return null;
@@ -142,6 +144,7 @@ function saveInputState() {
         requirements: readRequirements(),
         requiredQuartzIds: [...requiredQuartzIds],
         excludedQuartzIds: [...excludedQuartzIds],
+        dedupeByQuartzList,
       }),
     );
   } catch {
@@ -388,6 +391,23 @@ function renderQuartzPickers() {
     conflictIds: requiredQuartzIds,
     emptyText: "未选择禁用结晶回路。",
   });
+}
+
+function renderSearchOptions() {
+  const section = createElement("section", { className: "search-options" });
+  const label = createElement("label", { className: "checkbox-field" });
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.id = "dedupe-by-quartz-list";
+  input.checked = dedupeByQuartzList;
+  input.addEventListener("change", () => {
+    dedupeByQuartzList = input.checked;
+    saveInputState();
+  });
+
+  label.append(input, createElement("span", { text: "合并同回路结果" }));
+  section.append(label);
+  return section;
 }
 
 function renderSlots(lineIndex, container) {
@@ -662,6 +682,7 @@ function handleCompute() {
       limit: 20,
       requiredQuartzIds: [...requiredQuartzIds],
       excludedQuartzIds: [...excludedQuartzIds],
+      dedupeByQuartzList,
     },
   };
 
@@ -720,6 +741,11 @@ function handleReset() {
   });
   requiredQuartzIds.clear();
   excludedQuartzIds.clear();
+  dedupeByQuartzList = true;
+  const dedupeInput = document.querySelector("#dedupe-by-quartz-list");
+  if (dedupeInput) {
+    dedupeInput.checked = dedupeByQuartzList;
+  }
   resetQuartzPickerElementSelections();
   renderQuartzPickers();
   document.querySelector("#results").replaceChildren(
@@ -798,6 +824,8 @@ function renderApp() {
   const status = createElement("div", { className: "status", text: `正在加载 ${quartzSourceForId(selectedQuartzSourceId).filename}...` });
   status.id = "status";
   shell.append(status);
+
+  shell.append(renderSearchOptions());
 
   const requiredQuartz = createElement("section", { className: "required-panel" });
   requiredQuartz.id = "required-quartz";

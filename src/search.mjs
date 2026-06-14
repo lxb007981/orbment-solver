@@ -204,19 +204,29 @@ function lineConstraintScore(lineIndex, slotTypes, requirement, quartzList) {
   };
 }
 
-function signatureForAssignment(assignment) {
-  return assignment
-    .filter(Boolean)
+function signatureForQuartzIds(ids) {
+  return [...ids].sort((a, b) => a - b).join(",");
+}
+
+function signatureForAssignment(assignment, dedupeByQuartzList) {
+  const entries = assignment.filter(Boolean);
+  if (dedupeByQuartzList) {
+    return signatureForQuartzIds(entries.map((entry) => entry.quartz.id));
+  }
+
+  return entries
     .map((entry) => `${entry.slotType}:${entry.quartz.id}`)
     .sort()
     .join(",");
 }
 
-function signatureForQuartzIds(ids) {
-  return [...ids].sort((a, b) => a - b).join(",");
+function signatureForSolutionLines(lines) {
+  return signatureForQuartzIds(
+    lines.flatMap((line) => (line ? line.assignment.filter(Boolean).map((entry) => entry.quartz.id) : [])),
+  );
 }
 
-function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, usedQuartzIds, requiredQuartzIds, limit) {
+function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, usedQuartzIds, requiredQuartzIds, limit, dedupeByQuartzList) {
   const values = emptyValues();
   const assignment = Array(slotTypes.length).fill(null);
   const includedRequiredQuartzIds = new Set();
@@ -241,7 +251,7 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
       return;
     }
 
-    const signature = signatureForAssignment(assignment);
+    const signature = signatureForAssignment(assignment, dedupeByQuartzList);
     if (seen.has(signature)) {
       return;
     }
@@ -354,6 +364,7 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
 
 export function searchSolutions(quartzList, slotGrid, requirements, options = {}) {
   const limit = Number(options.limit ?? 20);
+  const dedupeByQuartzList = options.dedupeByQuartzList !== false;
   const knownQuartzIds = new Set(quartzList.map((quartz) => quartz.id));
   const requiredQuartzIds = new Set(
     (options.requiredQuartzIds ?? [])
@@ -398,6 +409,7 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
   }
 
   const solutions = [];
+  const seenSolutionQuartzSignatures = new Set();
   const usedQuartzIds = new Set();
   const currentLines = Array(slotGrid.length).fill(null);
   let limited = false;
@@ -411,6 +423,14 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
     if (lineSearchIndex === lineSearchOrder.length) {
       if (remainingRequiredQuartzIds.size > 0) {
         return;
+      }
+
+      if (dedupeByQuartzList) {
+        const signature = signatureForSolutionLines(currentLines);
+        if (seenSolutionQuartzSignatures.has(signature)) {
+          return;
+        }
+        seenSolutionQuartzSignatures.add(signature);
       }
 
       solutions.push({
@@ -436,6 +456,7 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
       usedQuartzIds,
       remainingRequiredQuartzIds,
       limit + 1,
+      dedupeByQuartzList,
     );
 
     if (lineResult.limited && lineSearchOrder.length === 1) {

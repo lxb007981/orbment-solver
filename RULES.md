@@ -70,6 +70,7 @@ Some quartz are restricted by name:
 - If no combination satisfies the requirements, mandatory quartz list, and excluded quartz list, it reports not found.
 - If more than 20 possible combinations are found, the solver stops and alerts the user.
 - Results avoid irrelevant extra quartz:
+  - By default, plans with the same equipped quartz list are merged even if the quartz are arranged on different lines or slots.
   - If a non-mandatory equipped quartz can be removed while still satisfying all requirements, that assignment is filtered out.
   - If a non-mandatory equipped quartz can be replaced by an unused, legal weaker quartz and still satisfy all requirements, that assignment is filtered out.
   - Exact same-value quartz with the same elemental type and line eligibility are treated as duplicate result variants; the earlier row in `kai-quartz.csv` is shown as the canonical choice.
