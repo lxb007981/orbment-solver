@@ -12,8 +12,16 @@ const elementColors = {
 };
 
 const STORAGE_KEY = "orbment-solver-inputs";
+const QUARTZ_SOURCE_STORAGE_KEY = "orbment-solver-quartz-source";
 const STORAGE_VERSION = 1;
+const DEFAULT_QUARTZ_SOURCE_ID = "kai";
+const QUARTZ_SOURCES = [
+  { id: "kuro", label: "黎之轨迹", filename: "kuro-quartz.csv" },
+  { id: "kuro2", label: "黎之轨迹II", filename: "kuro2-quartz.csv" },
+  { id: "kai", label: "界之轨迹", filename: "kai-quartz.csv" },
+];
 const savedInputState = loadInputState();
+let selectedQuartzSourceId = loadQuartzSourceId();
 const slotGrid = savedInputState?.slotGrid ?? createDefaultSlotGrid();
 const savedRequirements = savedInputState?.requirements ?? createDefaultRequirements();
 let quartzList = [];
@@ -21,6 +29,7 @@ const requiredQuartzIds = new Set(savedInputState?.requiredQuartzIds ?? []);
 const excludedQuartzIds = new Set(savedInputState?.excludedQuartzIds ?? []);
 let activeWorker = null;
 let activeJobId = 0;
+let activeQuartzLoadId = 0;
 let computeStartedAt = 0;
 let elapsedTimerId = null;
 
@@ -73,6 +82,27 @@ function normalizeStoredRequiredQuartzIds(value) {
   return value
     .map((id) => Number(id))
     .filter((id) => Number.isInteger(id) && id >= 0);
+}
+
+function quartzSourceForId(sourceId) {
+  return QUARTZ_SOURCES.find((source) => source.id === sourceId) ?? QUARTZ_SOURCES.find((source) => source.id === DEFAULT_QUARTZ_SOURCE_ID);
+}
+
+function loadQuartzSourceId() {
+  try {
+    const storedSourceId = globalThis.localStorage?.getItem(QUARTZ_SOURCE_STORAGE_KEY);
+    return quartzSourceForId(storedSourceId)?.id ?? DEFAULT_QUARTZ_SOURCE_ID;
+  } catch {
+    return DEFAULT_QUARTZ_SOURCE_ID;
+  }
+}
+
+function saveQuartzSourceId() {
+  try {
+    globalThis.localStorage?.setItem(QUARTZ_SOURCE_STORAGE_KEY, selectedQuartzSourceId);
+  } catch {
+    // Ignore storage errors so source switching remains usable.
+  }
 }
 
 function loadInputState() {
@@ -681,11 +711,48 @@ function handleReset() {
   }
 }
 
+function resetResults() {
+  document.querySelector("#results")?.replaceChildren(
+    createElement("p", { className: "empty-state", text: "请输入需求或选择必用结晶回路后搜索。" }),
+  );
+}
+
+function handleQuartzSourceChange(event) {
+  const source = quartzSourceForId(event.currentTarget.value);
+  if (!source || source.id === selectedQuartzSourceId) {
+    return;
+  }
+
+  cancelActiveCompute("");
+  selectedQuartzSourceId = source.id;
+  event.currentTarget.value = selectedQuartzSourceId;
+  saveQuartzSourceId();
+  requiredQuartzIds.clear();
+  excludedQuartzIds.clear();
+  saveInputState();
+  renderQuartzPickers();
+  resetResults();
+  loadQuartz();
+}
+
 function renderApp() {
   const shell = createElement("main", { className: "shell" });
 
   const header = createElement("header", { className: "page-header" });
   header.append(createElement("h1", { text: "导力器求解器" }));
+  const headerControls = createElement("div", { className: "header-controls" });
+
+  const sourceLabel = createElement("label", { className: "select-field source-field" });
+  sourceLabel.append(createElement("span", { text: "结晶回路列表" }));
+  const sourceSelect = document.createElement("select");
+  sourceSelect.id = "quartz-source";
+  for (const source of QUARTZ_SOURCES) {
+    sourceSelect.append(new Option(source.label, source.id));
+  }
+  sourceSelect.value = selectedQuartzSourceId;
+  sourceSelect.addEventListener("change", handleQuartzSourceChange);
+  sourceLabel.append(sourceSelect);
+
   const actions = createElement("div", { className: "actions" });
 
   const compute = createElement("button", { className: "primary-button", text: "计算" });
@@ -704,10 +771,11 @@ function renderApp() {
   reset.addEventListener("click", handleReset);
 
   actions.append(compute, cancel, reset);
-  header.append(actions);
+  headerControls.append(sourceLabel, actions);
+  header.append(headerControls);
   shell.append(header);
 
-  const status = createElement("div", { className: "status", text: "正在加载 kai-quartz.csv..." });
+  const status = createElement("div", { className: "status", text: `正在加载 ${quartzSourceForId(selectedQuartzSourceId).filename}...` });
   status.id = "status";
   shell.append(status);
 
@@ -742,13 +810,25 @@ function renderApp() {
 }
 
 async function loadQuartz() {
+  const source = quartzSourceForId(selectedQuartzSourceId);
+  const loadId = activeQuartzLoadId + 1;
+  activeQuartzLoadId = loadId;
+  quartzList = [];
+  renderQuartzPickers();
+  renderStatus(`正在加载 ${source.filename}...`);
+
   try {
-    const response = await fetch("./kai-quartz.csv", { cache: "no-store" });
+    const response = await fetch(`./${source.filename}`, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
 
-    quartzList = parseQuartzCsv(await response.text());
+    const parsedQuartzList = parseQuartzCsv(await response.text());
+    if (loadId !== activeQuartzLoadId) {
+      return;
+    }
+
+    quartzList = parsedQuartzList;
     const knownQuartzIds = new Set(quartzList.map((quartz) => quartz.id));
     const previousRequiredCount = requiredQuartzIds.size;
     const previousExcludedCount = excludedQuartzIds.size;
@@ -768,7 +848,11 @@ async function loadQuartz() {
     renderQuartzPickers();
     renderStatus(`已加载 ${quartzList.length} 个结晶回路。`, "ok");
   } catch (error) {
-    renderStatus(`加载 kai-quartz.csv 失败：${error.message}`, "error");
+    if (loadId !== activeQuartzLoadId) {
+      return;
+    }
+
+    renderStatus(`加载 ${source.filename} 失败：${error.message}`, "error");
   }
 }
 
