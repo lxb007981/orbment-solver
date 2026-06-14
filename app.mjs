@@ -707,7 +707,7 @@ function renderApp() {
   header.append(actions);
   shell.append(header);
 
-  const status = createElement("div", { className: "status", text: "正在加载 quartz.csv..." });
+  const status = createElement("div", { className: "status", text: "正在加载 kai-quartz.csv..." });
   status.id = "status";
   shell.append(status);
 
@@ -743,7 +743,7 @@ function renderApp() {
 
 async function loadQuartz() {
   try {
-    const response = await fetch("./quartz.csv", { cache: "no-store" });
+    const response = await fetch("./kai-quartz.csv", { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -768,7 +768,7 @@ async function loadQuartz() {
     renderQuartzPickers();
     renderStatus(`已加载 ${quartzList.length} 个结晶回路。`, "ok");
   } catch (error) {
-    renderStatus(`加载 quartz.csv 失败：${error.message}`, "error");
+    renderStatus(`加载 kai-quartz.csv 失败：${error.message}`, "error");
   }
 }
 

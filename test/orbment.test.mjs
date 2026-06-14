@@ -243,7 +243,7 @@ test("does not collapse same-value quartz with different line eligibility", () =
 });
 
 test("finds mandatory quartz distributions beyond early line candidate buckets", () => {
-  const quartz = parseQuartzCsv(readFileSync(new URL("../quartz.csv", import.meta.url), "utf8"));
+  const quartz = parseQuartzCsv(readFileSync(new URL("../kai-quartz.csv", import.meta.url), "utf8"));
   const requiredNames = ["苍冰之诗", "水灵之诗", "胧月之诗", "月灵之诗"];
   const result = searchSolutions(
     quartz,
@@ -264,7 +264,7 @@ test("finds mandatory quartz distributions beyond early line candidate buckets",
 });
 
 test("prioritizes mandatory quartz placements before empty slots", () => {
-  const quartz = parseQuartzCsv(readFileSync(new URL("../quartz.csv", import.meta.url), "utf8"));
+  const quartz = parseQuartzCsv(readFileSync(new URL("../kai-quartz.csv", import.meta.url), "utf8"));
   const requiredNames = ["晓星之诗", "星灵之诗", "胧月之诗", "月灵之诗"];
   const result = searchSolutions(
     quartz,
