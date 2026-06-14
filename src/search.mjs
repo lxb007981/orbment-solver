@@ -186,6 +186,78 @@ function canStillReachRequirement(lineIndex, values, remainingSlots, requirement
   return true;
 }
 
+function requiredIdsArray(requiredQuartzIds) {
+  return [...requiredQuartzIds].sort((first, second) => first - second);
+}
+
+function canPlaceRequiredQuartzInSlots(requiredQuartzIds, quartzById, availableSlots) {
+  const ids = requiredIdsArray(requiredQuartzIds);
+  if (ids.length === 0) {
+    return true;
+  }
+
+  if (ids.length > availableSlots.length) {
+    return false;
+  }
+
+  const requiredQuartz = ids.map((id) => quartzById.get(id));
+  if (requiredQuartz.some((quartz) => !quartz)) {
+    return false;
+  }
+
+  const candidates = requiredQuartz
+    .map((quartz) => ({
+      quartz,
+      slots: availableSlots
+        .map((slot, slotIndex) => (canUseQuartzInSlot(quartz, slot.slotType, slot.lineIndex) ? slotIndex : -1))
+        .filter((slotIndex) => slotIndex >= 0),
+    }))
+    .sort((first, second) => first.slots.length - second.slots.length || first.quartz.id - second.quartz.id);
+
+  if (candidates.some((candidate) => candidate.slots.length === 0)) {
+    return false;
+  }
+
+  const usedSlotIndices = new Set();
+  function match(candidateIndex) {
+    if (candidateIndex === candidates.length) {
+      return true;
+    }
+
+    for (const slotIndex of candidates[candidateIndex].slots) {
+      if (usedSlotIndices.has(slotIndex)) {
+        continue;
+      }
+
+      usedSlotIndices.add(slotIndex);
+      if (match(candidateIndex + 1)) {
+        return true;
+      }
+      usedSlotIndices.delete(slotIndex);
+    }
+
+    return false;
+  }
+
+  return match(0);
+}
+
+function slotsForLineIndices(slotGrid, lineIndices) {
+  const slots = [];
+  for (const lineIndex of lineIndices) {
+    for (const slotType of slotGrid[lineIndex] ?? []) {
+      if (slotType !== SLOT_DISABLED) {
+        slots.push({ lineIndex, slotType });
+      }
+    }
+  }
+  return slots;
+}
+
+function canPlaceRequiredQuartz(requiredQuartzIds, quartzById, slotGrid, lineIndices) {
+  return canPlaceRequiredQuartzInSlots(requiredQuartzIds, quartzById, slotsForLineIndices(slotGrid, lineIndices));
+}
+
 function lineConstraintScore(lineIndex, slotTypes, requirement, quartzList) {
   const activeRequirementCount = ELEMENTS.filter((element) => requirement[element] > 0).length;
   const slotFlexibility = slotTypes.reduce((sum, slotType) => {
@@ -202,6 +274,27 @@ function lineConstraintScore(lineIndex, slotTypes, requirement, quartzList) {
     slotFlexibility,
     lineIndex,
   };
+}
+
+function lineRequirementContributionScore(lineIndex, slotTypes, requirement, quartz) {
+  let score = 0;
+
+  for (const slotType of slotTypes) {
+    if (!canUseQuartzInSlot(quartz, slotType, lineIndex)) {
+      continue;
+    }
+
+    const contribution = contributionForSlot(quartz, slotType);
+    let slotScore = 0;
+    for (const element of ELEMENTS) {
+      if (requirement[element] > 0) {
+        slotScore += Math.min(contribution[element], requirement[element]);
+      }
+    }
+    score = Math.max(score, slotScore);
+  }
+
+  return score;
 }
 
 function signatureForQuartzIds(ids) {
@@ -226,24 +319,101 @@ function signatureForSolutionLines(lines) {
   );
 }
 
-function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, usedQuartzIds, requiredQuartzIds, limit, dedupeByQuartzList) {
+function searchLineCombinations(
+  lineIndex,
+  slotTypes,
+  requirement,
+  quartzList,
+  usedQuartzIds,
+  requiredQuartzIds,
+  limit,
+  dedupeByQuartzList,
+  options = {},
+) {
   const values = emptyValues();
   const assignment = Array(slotTypes.length).fill(null);
   const includedRequiredQuartzIds = new Set();
+  const quartzById = options.quartzById ?? new Map(quartzList.map((quartz) => [quartz.id, quartz]));
+  const slotGrid = options.slotGrid;
+  const futureLineIndices = options.futureLineIndices ?? [];
+  const onCombination = options.onCombination;
+  const hasLineRequirement = hasRequirement(requirement);
+  const relevantQuartzList = hasLineRequirement
+    ? quartzList.filter((quartz) => requiredQuartzIds.has(quartz.id) || lineRequirementContributionScore(lineIndex, slotTypes, requirement, quartz) > 0)
+    : quartzList;
   const candidateQuartzList =
     requiredQuartzIds.size > 0
-      ? [...quartzList].sort((first, second) => {
+      ? [...relevantQuartzList].sort((first, second) => {
           const firstRequired = requiredQuartzIds.has(first.id) ? 0 : 1;
           const secondRequired = requiredQuartzIds.has(second.id) ? 0 : 1;
-          return firstRequired - secondRequired || first.id - second.id;
+          if (hasLineRequirement) {
+            const firstScore = lineRequirementContributionScore(lineIndex, slotTypes, requirement, first);
+            const secondScore = lineRequirementContributionScore(lineIndex, slotTypes, requirement, second);
+            const firstHelpfulRequired = firstRequired === 0 && firstScore > 0 ? 0 : 1;
+            const secondHelpfulRequired = secondRequired === 0 && secondScore > 0 ? 0 : 1;
+            return (
+              firstHelpfulRequired - secondHelpfulRequired ||
+              secondScore - firstScore ||
+              firstRequired - secondRequired ||
+              first.id - second.id
+            );
+          }
+          if (firstRequired !== secondRequired) {
+            return firstRequired - secondRequired;
+          }
+          return first.id - second.id;
         })
-      : quartzList;
+      : relevantQuartzList;
   const results = [];
   const seen = new Set();
   const resultCountsByRequiredSignature = new Map();
   let limited = false;
+  let stopped = false;
+
+  function canDeferMissingRequiredQuartz() {
+    if (requiredQuartzIds.size === 0 || !slotGrid) {
+      return true;
+    }
+
+    const deferredRequiredQuartzIds = new Set();
+    for (const quartzId of requiredQuartzIds) {
+      if (!includedRequiredQuartzIds.has(quartzId)) {
+        deferredRequiredQuartzIds.add(quartzId);
+      }
+    }
+
+    return canPlaceRequiredQuartz(deferredRequiredQuartzIds, quartzById, slotGrid, futureLineIndices);
+  }
+
+  function canPlaceMissingRequiredFrom(slotIndex) {
+    if (requiredQuartzIds.size === 0 || !slotGrid) {
+      return true;
+    }
+
+    const missingRequiredQuartzIds = new Set();
+    for (const quartzId of requiredQuartzIds) {
+      if (!includedRequiredQuartzIds.has(quartzId)) {
+        missingRequiredQuartzIds.add(quartzId);
+      }
+    }
+
+    const availableSlots = [];
+    for (let index = slotIndex; index < slotTypes.length; index += 1) {
+      const slotType = slotTypes[index];
+      if (slotType !== SLOT_DISABLED) {
+        availableSlots.push({ lineIndex, slotType });
+      }
+    }
+    availableSlots.push(...slotsForLineIndices(slotGrid, futureLineIndices));
+
+    return canPlaceRequiredQuartzInSlots(missingRequiredQuartzIds, quartzById, availableSlots);
+  }
 
   function recordResult() {
+    if (!canDeferMissingRequiredQuartz()) {
+      return;
+    }
+
     if (
       !isMinimalAssignment(assignment, values, requirement, requiredQuartzIds) ||
       !isPreferredAssignment(lineIndex, assignment, values, requirement, quartzList, usedQuartzIds, requiredQuartzIds)
@@ -263,9 +433,7 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
       return;
     }
 
-    seen.add(signature);
-    resultCountsByRequiredSignature.set(requiredSignature, signatureCount + 1);
-    results.push({
+    const result = {
       lineIndex,
       assignment: assignment.map((entry) =>
         entry
@@ -278,18 +446,37 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
       ),
       values: { ...values },
       requiredQuartzIds: [...includedRequiredQuartzIds],
-    });
+    };
+
+    seen.add(signature);
+    resultCountsByRequiredSignature.set(requiredSignature, signatureCount + 1);
+    if (onCombination) {
+      if (onCombination(result) === false) {
+        stopped = true;
+      }
+      return;
+    }
+
+    results.push(result);
   }
 
   function backtrack(slotIndex) {
     if (requiredQuartzIds.size === 0 && results.length > limit) {
       limited = true;
+      stopped = true;
+      return;
+    }
+
+    if (!canPlaceMissingRequiredFrom(slotIndex)) {
       return;
     }
 
     const requirementMet = meetsRequirement(values, requirement);
     if (requirementMet) {
       recordResult();
+      if (stopped) {
+        return;
+      }
     }
 
     if (slotIndex === slotTypes.length) {
@@ -305,7 +492,7 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
     }
 
     const remainingSlots = slotTypes.slice(slotIndex + 1).filter((type) => type !== SLOT_DISABLED);
-    if (!canStillReachRequirement(lineIndex, values, [slotType, ...remainingSlots], requirement, quartzList, usedQuartzIds)) {
+    if (!canStillReachRequirement(lineIndex, values, [slotType, ...remainingSlots], requirement, relevantQuartzList, usedQuartzIds)) {
       return;
     }
 
@@ -315,7 +502,10 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
       assignment[slotIndex] = null;
     };
 
-    if (requiredQuartzIds.size === 0 && canStillReachRequirement(lineIndex, values, remainingSlots, requirement, quartzList, usedQuartzIds)) {
+    if (
+      requiredQuartzIds.size === 0 &&
+      canStillReachRequirement(lineIndex, values, remainingSlots, requirement, relevantQuartzList, usedQuartzIds)
+    ) {
       tryEmptySlot();
     }
 
@@ -337,7 +527,7 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
       addValues(values, contribution);
       assignment[slotIndex] = { quartz, slotType, contribution };
 
-      if (canStillReachRequirement(lineIndex, values, remainingSlots, requirement, quartzList, usedQuartzIds)) {
+      if (canStillReachRequirement(lineIndex, values, remainingSlots, requirement, relevantQuartzList, usedQuartzIds)) {
         backtrack(slotIndex + 1);
       }
 
@@ -348,12 +538,15 @@ function searchLineCombinations(lineIndex, slotTypes, requirement, quartzList, u
       }
       usedQuartzIds.delete(quartz.id);
 
-      if (limited) {
+      if (stopped) {
         return;
       }
     }
 
-    if (requiredQuartzIds.size > 0 && canStillReachRequirement(lineIndex, values, remainingSlots, requirement, quartzList, usedQuartzIds)) {
+    if (
+      requiredQuartzIds.size > 0 &&
+      canStillReachRequirement(lineIndex, values, remainingSlots, requirement, relevantQuartzList, usedQuartzIds)
+    ) {
       tryEmptySlot();
     }
   }
@@ -384,6 +577,7 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
   }
 
   const availableQuartzList = quartzList.filter((quartz) => !excludedQuartzIds.has(quartz.id));
+  const availableQuartzById = new Map(availableQuartzList.map((quartz) => [quartz.id, quartz]));
   const normalizedRequirements = requirements.map(normalizeRequirement);
   const activeLines = normalizedRequirements
     .map((requirement, lineIndex) => ({ lineIndex, requirement }))
@@ -398,7 +592,7 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
             return (
               firstScore.hasRequirement - secondScore.hasRequirement ||
               firstScore.activeRequirementCount - secondScore.activeRequirementCount ||
-              secondScore.slotFlexibility - firstScore.slotFlexibility ||
+              firstScore.slotFlexibility - secondScore.slotFlexibility ||
               firstScore.lineIndex - secondScore.lineIndex
             );
           })
@@ -417,6 +611,11 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
   function backtrack(lineSearchIndex, remainingRequiredQuartzIds) {
     if (solutions.length > limit) {
       limited = true;
+      return;
+    }
+
+    const remainingLineIndices = lineSearchOrder.slice(lineSearchIndex).map(({ lineIndex }) => lineIndex);
+    if (!canPlaceRequiredQuartz(remainingRequiredQuartzIds, availableQuartzById, slotGrid, remainingLineIndices)) {
       return;
     }
 
@@ -448,6 +647,7 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
     }
 
     const { lineIndex, requirement } = lineSearchOrder[lineSearchIndex];
+    const futureLineIndices = lineSearchOrder.slice(lineSearchIndex + 1).map((line) => line.lineIndex);
     const lineResult = searchLineCombinations(
       lineIndex,
       slotGrid[lineIndex],
@@ -457,36 +657,34 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
       remainingRequiredQuartzIds,
       limit + 1,
       dedupeByQuartzList,
+      {
+        quartzById: availableQuartzById,
+        slotGrid,
+        futureLineIndices,
+        onCombination(combination) {
+          const ids = combination.assignment.filter(Boolean).map((entry) => entry.quartz.id);
+          const nextRemainingRequiredQuartzIds = new Set(remainingRequiredQuartzIds);
+          for (const id of combination.requiredQuartzIds) {
+            nextRemainingRequiredQuartzIds.delete(id);
+          }
+
+          const hasEquippedQuartz = ids.length > 0;
+          currentLines[lineIndex] = hasRequirement(requirement) || hasEquippedQuartz ? combination : null;
+          backtrack(lineSearchIndex + 1, nextRemainingRequiredQuartzIds);
+          currentLines[lineIndex] = null;
+
+          if (solutions.length > limit) {
+            limited = true;
+            return false;
+          }
+
+          return true;
+        },
+      },
     );
 
     if (lineResult.limited && lineSearchOrder.length === 1) {
       limited = true;
-    }
-
-    for (const combination of lineResult.combinations) {
-      const ids = combination.assignment.filter(Boolean).map((entry) => entry.quartz.id);
-      for (const id of ids) {
-        usedQuartzIds.add(id);
-      }
-
-      const nextRemainingRequiredQuartzIds = new Set(remainingRequiredQuartzIds);
-      for (const id of combination.requiredQuartzIds) {
-        nextRemainingRequiredQuartzIds.delete(id);
-      }
-
-      const hasEquippedQuartz = ids.length > 0;
-      currentLines[lineIndex] = hasRequirement(requirement) || hasEquippedQuartz ? combination : null;
-      backtrack(lineSearchIndex + 1, nextRemainingRequiredQuartzIds);
-      currentLines[lineIndex] = null;
-
-      for (const id of ids) {
-        usedQuartzIds.delete(id);
-      }
-
-      if (solutions.length > limit) {
-        limited = true;
-        return;
-      }
     }
   }
 

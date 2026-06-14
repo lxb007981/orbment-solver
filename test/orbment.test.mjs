@@ -333,6 +333,69 @@ test("prioritizes mandatory quartz placements before empty slots", () => {
   assert.ok(requiredNames.every((name) => equippedNames(result.solutions[0]).includes(name)));
 });
 
+test("continues searching later required signatures after one line bucket reaches its cap", () => {
+  const quartz = parseQuartzCsv(
+    "水A\t水\t水×1\r\n水灵之诗\t水\t水×1\r\n火1\t火\t火×1\r\n火2\t火\t火×1\r\n火3\t火\t火×1\r\n",
+  );
+  const result = searchSolutions(
+    quartz,
+    grid(
+      [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_NORMAL, SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    ),
+    [req(), req(), req({ 水: 1, 火: 1 }), req()],
+    {
+      requiredQuartzIds: quartzIdsByName(quartz, ["水A", "水灵之诗"]),
+      limit: 1,
+    },
+  );
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["水A", "水灵之诗", "火1"]);
+});
+
+test("handles dense mandatory quartz searches with constrained drive and extra lines", () => {
+  const quartz = parseQuartzCsv(readFileSync(new URL("../kai-quartz.csv", import.meta.url), "utf8"));
+  const requiredNames = [
+    "月灵之诗",
+    "胧月之诗",
+    "水灵之诗",
+    "苍冰之诗",
+    "木花朔耶",
+    "琥耀珠",
+    "省EP3",
+    "金耀珠",
+    "行动力3",
+    "驱动3",
+    "驱动2",
+    "锻神",
+  ];
+  const result = searchSolutions(
+    quartz,
+    grid(
+      [SLOT_NORMAL, SLOT_NORMAL, SLOT_NORMAL, SLOT_NORMAL],
+      [SLOT_NORMAL, SLOT_NORMAL, SLOT_NORMAL, SLOT_DISABLED],
+      [SLOT_NORMAL, SLOT_NORMAL, "幻", SLOT_NORMAL],
+      [SLOT_NORMAL, "幻", SLOT_NORMAL, SLOT_NORMAL],
+    ),
+    [req(), req(), req({ 地: 6, 水: 12, 风: 6, 幻: 12 }), req({ 水: 6, 幻: 12 })],
+    {
+      requiredQuartzIds: quartzIdsByName(quartz, requiredNames),
+      excludedQuartzIds: quartzIdsByName(quartz, ["安克夏"]),
+    },
+  );
+  const equippedIds = result.solutions[0].lines.flatMap((line) =>
+    line ? line.assignment.filter(Boolean).map((entry) => entry.quartz.id) : [],
+  );
+
+  assert.equal(result.solutions.length, 20);
+  assert.equal(result.limited, true);
+  assert.equal(new Set(equippedIds).size, equippedIds.length);
+  assert.ok(requiredNames.every((name) => equippedNames(result.solutions[0]).includes(name)));
+});
+
 test("derives allowed line indices from restricted quartz names", () => {
   const quartz = parseQuartzCsv("冻结之刃\t水\t水×3\r\n青晶之轮\t水\t水×3\r\n水灵之诗\t水\t水×3\r\n魔防2\t水\t水×4\r\n");
 
