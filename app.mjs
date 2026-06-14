@@ -6,6 +6,7 @@ import {
   getCachedSearchResult,
   putCachedSearchResult,
 } from "./src/solver-cache.mjs";
+import { parseSlotProfilesJson } from "./src/slot-profiles.mjs";
 
 const elementColors = {
   地: "#8f6835",
@@ -22,9 +23,9 @@ const QUARTZ_SOURCE_STORAGE_KEY = "orbment-solver-quartz-source";
 const STORAGE_VERSION = 1;
 const DEFAULT_QUARTZ_SOURCE_ID = "kai";
 const QUARTZ_SOURCES = [
-  { id: "kuro", label: "黎之轨迹", filename: "kuro-quartz.csv" },
-  { id: "kuro2", label: "黎之轨迹II", filename: "kuro2-quartz.csv" },
-  { id: "kai", label: "界之轨迹", filename: "kai-quartz.csv" },
+  { id: "kuro", label: "黎之轨迹", filename: "kuro-quartz.csv", profileFilename: "kuro-slot-profiles.json" },
+  { id: "kuro2", label: "黎之轨迹II", filename: "kuro2-quartz.csv", profileFilename: "kuro2-slot-profiles.json" },
+  { id: "kai", label: "界之轨迹", filename: "kai-quartz.csv", profileFilename: "kai-slot-profiles.json" },
 ];
 const savedInputState = loadInputState();
 let selectedQuartzSourceId = loadQuartzSourceId();
@@ -32,6 +33,8 @@ const slotGrid = savedInputState?.slotGrid ?? createDefaultSlotGrid();
 const savedRequirements = savedInputState?.requirements ?? createDefaultRequirements();
 let dedupeByQuartzList = savedInputState?.dedupeByQuartzList ?? true;
 let quartzList = [];
+let characterProfiles = [];
+let isGameDataLoading = false;
 const requiredQuartzIds = new Set(savedInputState?.requiredQuartzIds ?? []);
 const excludedQuartzIds = new Set(savedInputState?.excludedQuartzIds ?? []);
 const quartzPickerElementSelections = {
@@ -40,7 +43,7 @@ const quartzPickerElementSelections = {
 };
 let activeWorker = null;
 let activeJobId = 0;
-let activeQuartzLoadId = 0;
+let activeGameDataLoadId = 0;
 let computeStartedAt = 0;
 let elapsedTimerId = null;
 
@@ -397,6 +400,60 @@ function renderQuartzPickers() {
     conflictIds: requiredQuartzIds,
     emptyText: "未选择禁用结晶回路。",
   });
+}
+
+function findCharacterProfileById(profileId) {
+  return characterProfiles.find((profile) => profile.id === profileId);
+}
+
+function renderAllSlots() {
+  document.querySelectorAll(".slots").forEach((container, lineIndex) => renderSlots(lineIndex, container));
+}
+
+function applyCharacterProfile(profile) {
+  profile.slotGrid.forEach((line, lineIndex) => {
+    slotGrid[lineIndex].splice(0, slotGrid[lineIndex].length, ...line);
+  });
+
+  renderAllSlots();
+  saveInputState();
+  resetResults();
+  renderStatus(`已套用 ${profile.name} 的槽位预设。`, "ok");
+}
+
+function handleCharacterProfileChange(event) {
+  const select = event.currentTarget;
+  const profile = findCharacterProfileById(select.value);
+  select.value = "";
+  if (!profile) {
+    return;
+  }
+
+  applyCharacterProfile(profile);
+}
+
+function renderCharacterProfilePicker() {
+  const select = document.querySelector("#character-profile");
+  if (!select) {
+    return;
+  }
+
+  select.replaceChildren();
+  const placeholderText = isGameDataLoading
+    ? "正在加载角色预设..."
+    : characterProfiles.length === 0
+      ? "无可用角色预设"
+      : "套用角色预设...";
+  const placeholder = new Option(placeholderText, "");
+  placeholder.disabled = true;
+  placeholder.selected = true;
+  select.append(placeholder);
+
+  for (const profile of characterProfiles) {
+    select.append(new Option(profile.name, profile.id));
+  }
+
+  select.disabled = isGameDataLoading || characterProfiles.length === 0;
 }
 
 function renderSearchOptions() {
@@ -767,7 +824,7 @@ function handleReset() {
     line.fill(SLOT_NORMAL);
   }
 
-  document.querySelectorAll(".slots").forEach((container, lineIndex) => renderSlots(lineIndex, container));
+  renderAllSlots();
   document.querySelectorAll("input[data-requirement]").forEach((input) => {
     input.value = "";
   });
@@ -810,7 +867,7 @@ function handleQuartzSourceChange(event) {
   saveInputState();
   renderQuartzPickers();
   resetResults();
-  loadQuartz();
+  loadGameData();
 }
 
 function renderApp() {
@@ -821,7 +878,7 @@ function renderApp() {
   const headerControls = createElement("div", { className: "header-controls" });
 
   const sourceLabel = createElement("label", { className: "select-field source-field" });
-  sourceLabel.append(createElement("span", { text: "结晶回路列表" }));
+  sourceLabel.append(createElement("span", { text: "游戏版本" }));
   const sourceSelect = document.createElement("select");
   sourceSelect.id = "quartz-source";
   for (const source of QUARTZ_SOURCES) {
@@ -830,6 +887,13 @@ function renderApp() {
   sourceSelect.value = selectedQuartzSourceId;
   sourceSelect.addEventListener("change", handleQuartzSourceChange);
   sourceLabel.append(sourceSelect);
+
+  const profileLabel = createElement("label", { className: "select-field source-field" });
+  profileLabel.append(createElement("span", { text: "角色槽位预设" }));
+  const profileSelect = document.createElement("select");
+  profileSelect.id = "character-profile";
+  profileSelect.addEventListener("change", handleCharacterProfileChange);
+  profileLabel.append(profileSelect);
 
   const actions = createElement("div", { className: "actions" });
 
@@ -853,11 +917,15 @@ function renderApp() {
   clearCache.addEventListener("click", handleClearCache);
 
   actions.append(compute, cancel, reset, clearCache);
-  headerControls.append(sourceLabel, actions);
+  headerControls.append(sourceLabel, profileLabel, actions);
   header.append(headerControls);
   shell.append(header);
 
-  const status = createElement("div", { className: "status", text: `正在加载 ${quartzSourceForId(selectedQuartzSourceId).filename}...` });
+  const statusSource = quartzSourceForId(selectedQuartzSourceId);
+  const status = createElement("div", {
+    className: "status",
+    text: `正在加载 ${statusSource.filename} 和 ${statusSource.profileFilename}...`,
+  });
   status.id = "status";
   shell.append(status);
 
@@ -891,28 +959,42 @@ function renderApp() {
   shell.append(footer);
 
   app.replaceChildren(shell);
+  renderCharacterProfilePicker();
 }
 
-async function loadQuartz() {
+async function loadGameData() {
   const source = quartzSourceForId(selectedQuartzSourceId);
-  const loadId = activeQuartzLoadId + 1;
-  activeQuartzLoadId = loadId;
+  const loadId = activeGameDataLoadId + 1;
+  activeGameDataLoadId = loadId;
+  isGameDataLoading = true;
   quartzList = [];
+  characterProfiles = [];
   renderQuartzPickers();
-  renderStatus(`正在加载 ${source.filename}...`);
+  renderCharacterProfilePicker();
+  renderStatus(`正在加载 ${source.filename} 和 ${source.profileFilename}...`);
 
   try {
-    const response = await fetch(`./${source.filename}`, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    const [quartzResponse, profileResponse] = await Promise.all([
+      fetch(`./${source.filename}`, { cache: "no-store" }),
+      fetch(`./${source.profileFilename}`, { cache: "no-store" }),
+    ]);
+    if (!quartzResponse.ok) {
+      throw new Error(`${source.filename} HTTP ${quartzResponse.status}`);
+    }
+    if (!profileResponse.ok) {
+      throw new Error(`${source.profileFilename} HTTP ${profileResponse.status}`);
     }
 
-    const parsedQuartzList = parseQuartzCsv(await response.text());
-    if (loadId !== activeQuartzLoadId) {
+    const [quartzText, profileText] = await Promise.all([quartzResponse.text(), profileResponse.text()]);
+    const parsedQuartzList = parseQuartzCsv(quartzText);
+    const parsedCharacterProfiles = parseSlotProfilesJson(profileText, source.id);
+    if (loadId !== activeGameDataLoadId) {
       return;
     }
 
     quartzList = parsedQuartzList;
+    characterProfiles = parsedCharacterProfiles;
+    isGameDataLoading = false;
     const knownQuartzIds = new Set(quartzList.map((quartz) => quartz.id));
     const previousRequiredCount = requiredQuartzIds.size;
     const previousExcludedCount = excludedQuartzIds.size;
@@ -930,15 +1012,18 @@ async function loadQuartz() {
       saveInputState();
     }
     renderQuartzPickers();
-    renderStatus(`已加载 ${quartzList.length} 个结晶回路。`, "ok");
+    renderCharacterProfilePicker();
+    renderStatus(`已加载 ${quartzList.length} 个结晶回路和 ${characterProfiles.length} 个角色预设。`, "ok");
   } catch (error) {
-    if (loadId !== activeQuartzLoadId) {
+    if (loadId !== activeGameDataLoadId) {
       return;
     }
 
-    renderStatus(`加载 ${source.filename} 失败：${error.message}`, "error");
+    isGameDataLoading = false;
+    renderCharacterProfilePicker();
+    renderStatus(`加载 ${source.label} 数据失败：${error.message}`, "error");
   }
 }
 
 renderApp();
-loadQuartz();
+loadGameData();
