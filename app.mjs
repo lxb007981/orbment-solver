@@ -1,5 +1,11 @@
 import { ELEMENTS, formatValues, parseQuartzCsv } from "./src/quartz.mjs";
 import { LINE_NAMES, SLOT_DISABLED, SLOT_NORMAL } from "./src/search.mjs";
+import {
+  clearSolverCache,
+  createSolverCacheKey,
+  getCachedSearchResult,
+  putCachedSearchResult,
+} from "./src/solver-cache.mjs";
 
 const elementColors = {
   地: "#8f6835",
@@ -659,11 +665,6 @@ function handleCompute() {
     return;
   }
 
-  if (typeof Worker === "undefined") {
-    renderStatus("当前浏览器不支持 Web Workers。", "error");
-    return;
-  }
-
   if (activeWorker) {
     return;
   }
@@ -673,15 +674,6 @@ function handleCompute() {
   }
 
   saveInputState();
-  let worker;
-  try {
-    worker = new Worker(new URL("./src/search-worker.mjs", import.meta.url), { type: "module" });
-  } catch (error) {
-    renderStatus(`搜索失败：${error instanceof Error ? error.message : String(error)}`, "error");
-    return;
-  }
-
-  const jobId = activeJobId + 1;
   const payload = {
     quartzList,
     slotGrid: slotGrid.map((line) => [...line]),
@@ -694,6 +686,28 @@ function handleCompute() {
     },
   };
 
+  const cacheKey = createSolverCacheKey(payload, selectedQuartzSourceId);
+  const cachedResult = getCachedSearchResult(cacheKey, quartzList, payload.slotGrid);
+  if (cachedResult) {
+    renderStatus("命中缓存，已显示结果。", "ok");
+    renderResults(cachedResult);
+    return;
+  }
+
+  if (typeof Worker === "undefined") {
+    renderStatus("当前浏览器不支持 Web Workers。", "error");
+    return;
+  }
+
+  let worker;
+  try {
+    worker = new Worker(new URL("./src/search-worker.mjs", import.meta.url), { type: "module" });
+  } catch (error) {
+    renderStatus(`搜索失败：${error instanceof Error ? error.message : String(error)}`, "error");
+    return;
+  }
+
+  const jobId = activeJobId + 1;
   activeWorker = worker;
   activeJobId = jobId;
   setComputing(true);
@@ -708,6 +722,7 @@ function handleCompute() {
     const elapsed = formatElapsedTime(performance.now() - computeStartedAt);
     if (message.type === "done") {
       finishActiveWorker(worker);
+      putCachedSearchResult(cacheKey, message.result);
       renderStatus(`搜索完成，用时 ${elapsed}。`, "ok");
       renderResults(message.result);
       return;
@@ -734,6 +749,15 @@ function handleCompute() {
     finishActiveWorker(worker);
     renderStatus(`搜索失败：${error instanceof Error ? error.message : String(error)}`, "error");
   }
+}
+
+function handleClearCache() {
+  if (!window.confirm("确定要清除已缓存的计算结果吗？")) {
+    return;
+  }
+
+  clearSolverCache();
+  renderStatus("缓存已清除。", "ok");
 }
 
 function handleReset() {
@@ -824,7 +848,11 @@ function renderApp() {
   reset.type = "button";
   reset.addEventListener("click", handleReset);
 
-  actions.append(compute, cancel, reset);
+  const clearCache = createElement("button", { className: "secondary-button", text: "清除缓存" });
+  clearCache.type = "button";
+  clearCache.addEventListener("click", handleClearCache);
+
+  actions.append(compute, cancel, reset, clearCache);
   headerControls.append(sourceLabel, actions);
   header.append(headerControls);
   shell.append(header);
