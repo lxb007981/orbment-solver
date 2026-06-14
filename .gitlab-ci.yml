@@ -1,0 +1,17 @@
+image: alpine:latest
+
+stages:
+  - deploy
+
+pages:
+  stage: deploy
+  script:
+    - mkdir public
+    - cp index.html app.mjs styles.css quartz.csv public/
+    - cp -R src public/
+  artifacts:
+    paths:
+      - public
+    expire_in: never
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
