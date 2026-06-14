@@ -109,7 +109,23 @@ function isMinimalAssignment(assignment, values, requirement, requiredQuartzIds)
   return true;
 }
 
-function isPreferredAssignment(lineIndex, assignment, values, requirement, quartzList, usedQuartzIds, requiredQuartzIds) {
+function hasFutureEligibilityAdvantage(candidate, currentQuartz, slotGrid, futureLineIndices) {
+  if (!slotGrid || futureLineIndices.length === 0) {
+    return false;
+  }
+
+  for (const futureLineIndex of futureLineIndices) {
+    for (const slotType of slotGrid[futureLineIndex] ?? []) {
+      if (canUseQuartzInSlot(candidate, slotType, futureLineIndex) && !canUseQuartzInSlot(currentQuartz, slotType, futureLineIndex)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function isPreferredAssignment(lineIndex, assignment, values, requirement, quartzList, usedQuartzIds, requiredQuartzIds, options = {}) {
   for (const entry of assignment) {
     if (!entry || requiredQuartzIds.has(entry.quartz.id)) {
       continue;
@@ -128,6 +144,10 @@ function isPreferredAssignment(lineIndex, assignment, values, requirement, quart
       const candidateContribution = contributionForSlot(candidate, entry.slotType);
       const comparison = compareContributions(candidateContribution, entry.contribution);
       if (!comparison.lowerOrEqual) {
+        continue;
+      }
+
+      if (hasFutureEligibilityAdvantage(candidate, entry.quartz, options.slotGrid, options.futureLineIndices ?? [])) {
         continue;
       }
 
@@ -408,7 +428,10 @@ function searchLineCombinations(
 
     if (
       !isMinimalAssignment(assignment, values, requirement, requiredQuartzIds) ||
-      !isPreferredAssignment(lineIndex, assignment, values, requirement, quartzList, usedQuartzIds, requiredQuartzIds)
+      !isPreferredAssignment(lineIndex, assignment, values, requirement, quartzList, usedQuartzIds, requiredQuartzIds, {
+        slotGrid,
+        futureLineIndices,
+      })
     ) {
       return;
     }

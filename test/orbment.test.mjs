@@ -325,6 +325,20 @@ test("does not collapse same-value quartz with different line eligibility", () =
   assert.deepEqual(equippedNames(result.solutions[0]), ["冻结之刃", "水3"]);
 });
 
+test("keeps a restricted quartz on a line when an unrestricted weaker quartz is needed downstream", () => {
+  const quartz = parseQuartzCsv("强攻之刃\t火\t火×6\r\n火珠3\t火\t火×5\r\n");
+  const slots = grid(
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+  );
+  const result = searchSolutions(quartz, slots, [req({ 火: 5 }), req({ 火: 5 }), req(), req()]);
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["强攻之刃", "火珠3"]);
+});
+
 test("finds mandatory quartz distributions beyond early line candidate buckets", () => {
   const quartz = parseQuartzCsv(readFileSync(new URL("../kai-quartz.csv", import.meta.url), "utf8"));
   const requiredNames = ["苍冰之诗", "水灵之诗", "胧月之诗", "月灵之诗"];
