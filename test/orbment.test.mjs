@@ -197,6 +197,40 @@ test("keeps stronger quartz when weaker quartz cannot satisfy requirements", () 
   assert.deepEqual(equippedNames(result.solutions[0]), ["HP3"]);
 });
 
+test("prefers weaker eligible quartz even when line eligibility differs", () => {
+  const quartz = parseQuartzCsv("HP2\t水\t水×4\r\n冻结之刃\t水\t水×3\r\n");
+  const result = searchSolutions(
+    quartz,
+    grid(
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    ),
+    [req(), req(), req(), req({ 水: 3 })],
+  );
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["冻结之刃"]);
+});
+
+test("prefers weaker eligible quartz even when quartz elements differ", () => {
+  const quartz = parseQuartzCsv("史矛格\t火\t水×3，火×5\r\n冻结之刃\t水\t水×3\r\n");
+  const result = searchSolutions(
+    quartz,
+    grid(
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+      [SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED],
+    ),
+    [req(), req(), req(), req({ 水: 3 })],
+  );
+
+  assert.equal(result.solutions.length, 1);
+  assert.deepEqual(equippedNames(result.solutions[0]), ["冻结之刃"]);
+});
+
 test("suppresses exact duplicate quartz variants with the lower CSV id as canonical", () => {
   const quartz = parseQuartzCsv("魔防3\t水\t水×6\r\nHP3\t水\t水×6\r\n");
   const result = searchSolutions(quartz, grid([SLOT_NORMAL, SLOT_DISABLED, SLOT_DISABLED, SLOT_DISABLED]), [req({ 水: 6 }), req(), req(), req()]);

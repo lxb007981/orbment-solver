@@ -66,12 +66,6 @@ function meetsRequirement(values, requirement) {
   return ELEMENTS.every((element) => values[element] >= requirement[element]);
 }
 
-function sameLineEligibility(firstQuartz, secondQuartz) {
-  const firstAllowed = allowedLineIndicesForQuartz(firstQuartz);
-  const secondAllowed = allowedLineIndicesForQuartz(secondQuartz);
-  return firstAllowed.length === secondAllowed.length && firstAllowed.every((lineIndex, index) => lineIndex === secondAllowed[index]);
-}
-
 function compareContributions(candidateContribution, currentContribution) {
   let hasLowerValue = false;
 
@@ -126,8 +120,6 @@ function isPreferredAssignment(lineIndex, assignment, values, requirement, quart
         candidate.id === entry.quartz.id ||
         usedQuartzIds.has(candidate.id) ||
         requiredQuartzIds.has(candidate.id) ||
-        candidate.element !== entry.quartz.element ||
-        !sameLineEligibility(candidate, entry.quartz) ||
         !canUseQuartzInSlot(candidate, entry.slotType, lineIndex)
       ) {
         continue;
