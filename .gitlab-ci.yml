@@ -7,7 +7,7 @@ pages:
   stage: deploy
   script:
     - mkdir public
-    - cp index.html app.mjs styles.css kai-quartz.csv public/
+    - cp index.html app.mjs styles.css favicon.png kai-quartz.csv kuro-quartz.csv kuro2-quartz.csv public/
     - cp -R src public/
   artifacts:
     paths:
