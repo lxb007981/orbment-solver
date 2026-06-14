@@ -730,6 +730,14 @@ function renderApp() {
   results.append(createElement("p", { className: "empty-state", text: "请输入需求或选择必用结晶回路后搜索。" }));
   shell.append(results);
 
+  const footer = createElement("footer", { className: "site-footer" });
+  const sourceLink = createElement("a", { text: "查看源码" });
+  sourceLink.href = "https://gitlab.com/lxb007981/orbment-solver";
+  sourceLink.target = "_blank";
+  sourceLink.rel = "noopener noreferrer";
+  footer.append(sourceLink);
+  shell.append(footer);
+
   app.replaceChildren(shell);
 }
 
