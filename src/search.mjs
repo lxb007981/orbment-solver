@@ -325,6 +325,93 @@ function signatureForAssignment(assignment, dedupeByQuartzList) {
     .join(",");
 }
 
+function sameContribution(firstContribution, secondContribution) {
+  return ELEMENTS.every((element) => firstContribution[element] === secondContribution[element]);
+}
+
+function canonicalQuartzForEntry(entry, line, requirement, quartzList, requiredQuartzIds, usedQuartzIds) {
+  let canonicalQuartz = entry.quartz;
+  let canonicalContribution = entry.contribution;
+  for (const candidate of quartzList) {
+    if (
+      candidate.id === entry.quartz.id ||
+      usedQuartzIds.has(candidate.id) ||
+      requiredQuartzIds.has(candidate.id) ||
+      !canUseQuartzInSlot(candidate, entry.slotType, line.lineIndex)
+    ) {
+      continue;
+    }
+
+    const candidateContribution = contributionForSlot(candidate, entry.slotType);
+    const comparisonToEntry = compareContributions(candidateContribution, entry.contribution);
+    if (!comparisonToEntry.lowerOrEqual) {
+      continue;
+    }
+
+    if (
+      comparisonToEntry.hasLowerValue &&
+      !meetsRequirementWithReplacement(line.values, entry.contribution, candidateContribution, requirement)
+    ) {
+      continue;
+    }
+
+    const comparisonToCanonical = compareContributions(candidateContribution, canonicalContribution);
+    if (
+      comparisonToCanonical.lowerOrEqual &&
+      (comparisonToCanonical.hasLowerValue || (sameContribution(candidateContribution, canonicalContribution) && candidate.id < canonicalQuartz.id))
+    ) {
+      canonicalQuartz = candidate;
+      canonicalContribution = candidateContribution;
+    }
+  }
+
+  return { quartz: canonicalQuartz, contribution: canonicalContribution };
+}
+
+function finalizeSolutionLines(lines, quartzList, requirements, requiredQuartzIds) {
+  const usedQuartzIds = new Set(
+    lines.flatMap((line) => (line ? line.assignment.filter(Boolean).map((entry) => entry.quartz.id) : [])),
+  );
+
+  return lines.map((line) => {
+    if (!line) {
+      return null;
+    }
+
+    const finalizedLine = {
+      lineIndex: line.lineIndex,
+      assignment: line.assignment.map((entry) =>
+        entry
+          ? {
+              quartz: entry.quartz,
+              slotType: entry.slotType,
+              contribution: { ...entry.contribution },
+            }
+          : null,
+      ),
+      values: { ...line.values },
+    };
+
+    for (const entry of finalizedLine.assignment) {
+      if (!entry || requiredQuartzIds.has(entry.quartz.id)) {
+        continue;
+      }
+
+      usedQuartzIds.delete(entry.quartz.id);
+      const canonical = canonicalQuartzForEntry(entry, finalizedLine, requirements[line.lineIndex], quartzList, requiredQuartzIds, usedQuartzIds);
+      if (canonical.quartz.id !== entry.quartz.id) {
+        subtractValues(finalizedLine.values, entry.contribution);
+        addValues(finalizedLine.values, canonical.contribution);
+        entry.quartz = canonical.quartz;
+        entry.contribution = { ...canonical.contribution };
+      }
+      usedQuartzIds.add(entry.quartz.id);
+    }
+
+    return finalizedLine;
+  });
+}
+
 function signatureForSolutionLines(lines) {
   return signatureForQuartzIds(
     lines.flatMap((line) => (line ? line.assignment.filter(Boolean).map((entry) => entry.quartz.id) : [])),
@@ -639,8 +726,9 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
         return;
       }
 
+      const finalizedLines = finalizeSolutionLines(currentLines, availableQuartzList, normalizedRequirements, requiredQuartzIds);
       if (dedupeByQuartzList) {
-        const signature = signatureForSolutionLines(currentLines);
+        const signature = signatureForSolutionLines(finalizedLines);
         if (seenSolutionQuartzSignatures.has(signature)) {
           return;
         }
@@ -648,15 +736,7 @@ export function searchSolutions(quartzList, slotGrid, requirements, options = {}
       }
 
       solutions.push({
-        lines: currentLines.map((line) =>
-          line
-            ? {
-                lineIndex: line.lineIndex,
-                assignment: line.assignment,
-                values: { ...line.values },
-              }
-            : null,
-        ),
+        lines: finalizedLines,
       });
       return;
     }

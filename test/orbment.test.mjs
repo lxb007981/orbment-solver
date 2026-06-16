@@ -339,6 +339,53 @@ test("keeps a restricted quartz on a line when an unrestricted weaker quartz is 
   assert.deepEqual(equippedNames(result.solutions[0]), ["强攻之刃", "火珠3"]);
 });
 
+test("deduplicates canonical quartz variants by occupied slot", () => {
+  const quartz = parseQuartzCsv(readFileSync(new URL("../kai-quartz.csv", import.meta.url), "utf8"));
+  const result = searchSolutions(
+    quartz,
+    grid(
+      [SLOT_NORMAL, SLOT_NORMAL, "空", SLOT_NORMAL],
+      [SLOT_NORMAL, SLOT_NORMAL, SLOT_NORMAL, SLOT_NORMAL],
+      [SLOT_NORMAL, "幻", SLOT_NORMAL, SLOT_NORMAL],
+      [SLOT_NORMAL, SLOT_NORMAL, "幻", SLOT_NORMAL],
+    ),
+    [req(), req(), req({ 地: 6, 水: 12, 风: 10, 幻: 12 }), req({ 水: 6, 幻: 12 })],
+    {
+      requiredQuartzIds: quartzIdsByName(quartz, ["月灵之诗", "胧月之诗", "水灵之诗", "苍冰之诗"]),
+      limit: 100,
+    },
+  );
+  const targetDrive = ["苍冰之诗", "杜兰达尔", "安克夏", "不屈"].sort().join(",");
+  const duplicateExtras = result.solutions
+    .map((solution) => ({
+      drive: solution.lines[2].assignment.filter(Boolean).map((entry) => entry.quartz.name).sort().join(","),
+      extraNames: solution.lines[3].assignment.filter(Boolean).map((entry) => entry.quartz.name),
+    }))
+    .filter(
+      ({ drive, extraNames }) =>
+        drive === targetDrive &&
+        ["月灵之诗", "胧月之诗", "水灵之诗"].every((name) => extraNames.includes(name)) &&
+        ["冻结之刃", "青晶之轮"].some((name) => extraNames.includes(name)),
+    )
+    .map(({ extraNames }) => extraNames.sort().join(","));
+  const targetExtra = ["月灵之诗", "苍冰之诗", "胧月之诗", "水灵之诗"].sort().join(",");
+  const duplicateDrives = result.solutions
+    .map((solution) => ({
+      driveNames: solution.lines[2].assignment.filter(Boolean).map((entry) => entry.quartz.name),
+      extra: solution.lines[3].assignment.filter(Boolean).map((entry) => entry.quartz.name).sort().join(","),
+    }))
+    .filter(
+      ({ driveNames, extra }) =>
+        extra === targetExtra &&
+        ["安克夏", "杜兰达尔", "苍耀珠"].every((name) => driveNames.includes(name)) &&
+        ["回避1", "风灵之诗"].some((name) => driveNames.includes(name)),
+    )
+    .map(({ driveNames }) => driveNames.sort().join(","));
+
+  assert.deepEqual(duplicateExtras, ["冻结之刃,月灵之诗,水灵之诗,胧月之诗"]);
+  assert.deepEqual(duplicateDrives, ["回避1,安克夏,杜兰达尔,苍耀珠"]);
+});
+
 test("finds mandatory quartz distributions beyond early line candidate buckets", () => {
   const quartz = parseQuartzCsv(readFileSync(new URL("../kai-quartz.csv", import.meta.url), "utf8"));
   const requiredNames = ["苍冰之诗", "水灵之诗", "胧月之诗", "月灵之诗"];
